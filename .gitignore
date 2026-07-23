@@ -4,12 +4,21 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
 
-# Models
+# Models (large binary files, download separately)
 models/*.onnx
 
 # Logs
 logs/
+
+# Environment & Secrets
+.env
+.env.local
 
 # IDE
 .vscode/

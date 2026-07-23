@@ -15,7 +15,7 @@ audio:
 
 vad:
   model_path: "models/silero_vad.onnx"  # VAD model path
-  threshold: 0.5                         # Speech/non-speech threshold
+  threshold: 0.3                         # Speech/non-speech threshold
   min_speech_duration: 0.25             # Minimum speech segment (seconds)
   min_silence_duration: 0.5             # Minimum silence to end utterance (seconds)
   frame_size: 512                        # Frame size at target sample rate
