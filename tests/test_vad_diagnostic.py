@@ -4,10 +4,15 @@ VAD 实时诊断工具
 实时捕获麦克风音频，对每一帧运行 Silero VAD 推理并显示概率值。
 用于诊断 VAD 检测失效问题：查看实际语音概率曲线、阈值匹配情况。
 
+支持两种模式:
+  - 标准模式: 48kHz → 重采样 → 16kHz → VAD (模拟 pipeline 真实路径)
+  - 直捕模式: 16kHz 直接捕获 → VAD (跳过重采样，用于诊断重采样是否破坏信号)
+
 用法:
-    python -m tests.test_vad_diagnostic              # 默认监听 10 秒
-    python -m tests.test_vad_diagnostic --duration 5  # 监听 5 秒
-    python -m tests.test_vad_diagnostic --threshold 0.5  # 用不同阈值
+    python -m tests.test_vad_diagnostic                      # 标准模式 10 秒
+    python -m tests.test_vad_diagnostic --direct-16k          # 直捕 16kHz 模式
+    python -m tests.test_vad_diagnostic --duration 5          # 监听 5 秒
+    python -m tests.test_vad_diagnostic --threshold 0.5       # 用不同阈值
     python -m tests.test_vad_diagnostic --device 1 --rate 48000
     python -m tests.test_vad_diagnostic --model models/silero_vad.onnx
 """
@@ -57,7 +62,12 @@ def _parse_args() -> argparse.Namespace:
         "--rate", "-r",
         type=int,
         default=48000,
-        help="采样率（Hz），默认 48000",
+        help="采样率（Hz），默认 48000（直捕模式忽略此参数，强制 16000）",
+    )
+    parser.add_argument(
+        "--direct-16k",
+        action="store_true",
+        help="直捕 16kHz 模式（跳过重采样，直接捕获 16kHz 喂给 VAD）",
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -102,7 +112,11 @@ def main() -> None:
     vad = SileroVAD(model_path=args.model, threshold=threshold)
     vad.load_model()
 
-    resampler = Resampler(args.rate, 16000)
+    # 模式选择
+    use_direct = args.direct_16k
+    sample_rate = 16000 if use_direct else args.rate
+    mode_label = "直捕 16kHz → VAD" if use_direct else f"{args.rate} Hz → 重采样 → 16 kHz"
+    resampler = None if use_direct else Resampler(args.rate, 16000)
 
     # 获取设备信息
     if args.device is not None:
@@ -114,9 +128,11 @@ def main() -> None:
     print(f"   {'=' * 55}")
     print(f"   📍 设备: {args.device if args.device is not None else '默认'}")
     print(f"   🆔 设备名: {device_info['name']}")
-    print(f"   📊 采样率: {args.rate} Hz → 16 kHz")
+    print(f"   📊 路径: {mode_label}")
     print(f"   🎯 VAD 阈值: {threshold}")
     print(f"   ⏱️  时长: {args.duration} 秒")
+    if use_direct:
+        print(f"   💡 直捕模式: 跳过重采样，诊断信号是否被重采样破坏")
     print(f"   {'=' * 55}")
     print(f"   🗣️  请对着麦克风说话...")
     print()
@@ -128,24 +144,28 @@ def main() -> None:
     max_prob_frame = 0
     last_display_time = 0.0
 
-    # 帧缓冲：48kHz raw → resample → 16kHz → 积累到 512 → VAD
+    # 帧缓冲（标准模式）：48kHz raw → resample → 16kHz → 积累到 512 → VAD
     frame_buffer: list[float] = []
-    _frame_count_local = 0  # 用于闭包里的计数
 
     def callback(indata: np.ndarray, frames: int, _time_info, _status) -> None:
-        nonlocal total_frames, above_threshold, max_prob, max_prob_frame, frame_buffer, _frame_count_local, last_display_time
+        nonlocal total_frames, above_threshold, max_prob, max_prob_frame, frame_buffer, last_display_time
 
         if _status:
             print(f"      ⚠️  Status: {_status}")
 
-        # 重采样麦克风捕获的 48kHz → 16kHz
-        audio_48k = indata[:, 0].copy()
-        resampled = resampler.resample(audio_48k)
-
-        if len(resampled) == 0:
-            return
-
-        frame_buffer.extend(resampled.tolist())
+        if use_direct:
+            # 直捕模式：16kHz 音频直接作为 VAD 帧（512 samples/帧）
+            audio = indata[:, 0].copy()
+            if len(audio) == 0:
+                return
+            frame_buffer.extend(audio.tolist())
+        else:
+            # 标准模式：重采样麦克风捕获的 48kHz → 16kHz
+            audio_48k = indata[:, 0].copy()
+            resampled = resampler.resample(audio_48k)
+            if len(resampled) == 0:
+                return
+            frame_buffer.extend(resampled.tolist())
 
         # 积累满 512 samples 就送 VAD
         while len(frame_buffer) >= 512:
@@ -154,7 +174,6 @@ def main() -> None:
 
             prob = vad._get_speech_prob(frame)
             total_frames += 1
-            _frame_count_local += 1
 
             if prob > max_prob:
                 max_prob = prob
@@ -172,15 +191,15 @@ def main() -> None:
 
             if show:
                 bar = _make_signal_bar(prob, threshold)
-                elapsed = now - _time_info.current_time if hasattr(_time_info, 'current_time') else 0
                 print(f"      frame {total_frames:4d}  prob={prob:.4f}  {bar}")
                 last_display_time = now
 
     stream = sd.InputStream(
         device=args.device,
-        samplerate=args.rate,
+        samplerate=sample_rate,
         channels=1,
         dtype="float32",
+        blocksize=512,
         callback=callback,
     )
 
