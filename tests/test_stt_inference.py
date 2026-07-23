@@ -289,10 +289,8 @@ def _run_inference(audio: np.ndarray, samplerate: int,
 
     # 配置热词
     hotwords = None
-    hotword_weight = None
     if args.hotwords:
         hotwords = [w.strip() for w in args.hotwords.split(",")]
-        hotword_weight = 10.0
         print(f"   热词: {hotwords}")
 
     print(f"\n🔊 音频信息: {len(audio) / _STANDARD_SAMPLE_RATE:.1f}s @ {_STANDARD_SAMPLE_RATE}Hz")
@@ -305,7 +303,6 @@ def _run_inference(audio: np.ndarray, samplerate: int,
         language=args.language if args.language != "auto" else None,
         beam_size=5,
         hotwords=hotwords,
-        hotword_weight=hotword_weight,
     )
     infer_time = time.monotonic() - infer_start
 
