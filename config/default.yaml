@@ -1,0 +1,37 @@
+# AIRI Voice Module - Default Configuration
+
+audio:
+  # Microphone settings
+  input_device: null           # null = system default
+  sample_rate: 48000           # Microphone native sample rate (Hz)
+  frames_per_buffer: 512       # Samples per callback frame
+
+  # Speaker settings
+  output_device: null          # null = system default
+  output_sample_rate: 24000    # TTS output sample rate (Hz)
+
+  # Resampling
+  target_sample_rate: 16000    # Target sample rate for VAD/STT (Hz)
+
+vad:
+  model_path: "models/silero_vad.onnx"  # VAD model path
+  threshold: 0.5                         # Speech/non-speech threshold
+  min_speech_duration: 0.25             # Minimum speech segment (seconds)
+  min_silence_duration: 0.5             # Minimum silence to end utterance (seconds)
+  frame_size: 512                        # Frame size at target sample rate
+
+airi:
+  host: "localhost"
+  port: 10443                    # AIRI WebSocket port
+  token: ""                      # Authentication token
+  reconnect_interval: 5          # Reconnect interval (seconds)
+  max_reconnect_attempts: 0      # 0 = unlimited retries
+
+logging:
+  level: "DEBUG"
+  format: "{time:HH:mm:ss.SSS} | {level:<7} | {name}:{function}:{line} | {message}"
+  file: "logs/voice-module.log"
+  rotation: "10 MB"
+
+pipeline:
+  speech_buffer_max_duration: 10.0  # Max duration of speech buffer (seconds)

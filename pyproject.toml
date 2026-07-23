@@ -1,0 +1,30 @@
+[project]
+name = "airi-voice-module"
+version = "0.1.0"
+description = "AIRI Voice Dialogue Module - Real-time voice interaction backend for Project AIRI"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "AIRI Team" },
+]
+
+dependencies = [
+    "sounddevice>=0.5.0",
+    "numpy>=1.26.0",
+    "scipy>=1.14.0",
+    "silero-vad>=4.0",
+    "onnxruntime>=1.17.0",
+    "websockets>=12.0",
+    "pyyaml>=6.0",
+    "loguru>=0.7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[project.scripts]
+airi-voice = "src.main:main"
