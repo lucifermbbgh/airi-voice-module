@@ -107,9 +107,49 @@ def _list_models() -> None:
     print()
 
 
+def _download_huggingface(repo_id: str, download_root: str | None = None,
+                          force: bool = False) -> str:
+    """从 HuggingFace Hub 下载模型文件（带进度条）。
+
+    Args:
+        repo_id: HuggingFace 仓库 ID。
+        download_root: 下载目录。
+        force: 强制重新下载。
+
+    Returns:
+        下载后本地路径。
+    """
+    from huggingface_hub import snapshot_download, constants
+
+    # 下载参数：显示进度条、支持断点续传
+    kwargs = {
+        "repo_id": repo_id,
+        "local_dir_use_symlinks": False,  # Windows 不兼容 symlink，用复制模式
+        "resume_download": True,           # 支持断点续传
+        "ignore_patterns": ["*.h5", "*.ot"],  # 跳过不需要的格式
+    }
+    if download_root:
+        kwargs["local_dir"] = download_root
+
+    if force:
+        # 清除缓存
+        import shutil
+        cache_dir = constants.default_cache_path / f"models--{repo_id.replace('/', '--')}"
+        if cache_dir.exists():
+            print(f"   🧹 清除缓存: {cache_dir}")
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
+    print()  # huggingface_hub 内部会打印 tqdm 进度条
+    model_path = snapshot_download(**kwargs)
+    return model_path
+
+
 def download_model(model_size: str, download_root: str | None = None,
                    force: bool = False) -> str:
     """下载 faster-whisper 模型到本地缓存。
+
+    先将模型文件从 HuggingFace Hub 下载到本地（带 tqdm 进度条），
+    然后用 faster-whisper 加载模型验证完整性。
 
     Args:
         model_size: 模型大小（tiny/base/small/medium/large-v3）。
@@ -134,50 +174,50 @@ def download_model(model_size: str, download_root: str | None = None,
         print(f"   下载到: {download_root}")
     else:
         print(f"   下载到: huggingface 默认缓存目录")
-    print()
 
-    if force:
-        import shutil
-        from huggingface_hub import snapshot_download
-        # 清除缓存（如果存在）
-        try:
-            cache_path = snapshot_download(model_name, local_files_only=True)
-            shutil.rmtree(cache_path, ignore_errors=True)
-            print(f"   🧹 已清除缓存: {cache_path}")
-        except Exception:
-            pass
+    # Step 1: 下载模型文件（带 tqdm 进度条 + 断点续传）
+    download_start = time.monotonic()
+    local_path = _download_huggingface(model_name, download_root, force)
+    download_time = time.monotonic() - download_start
+    print(f"\n   📦 下载完成: {download_time:.1f}s")
 
-    start = time.monotonic()
+    # Step 2: 用 faster-whisper 加载模型（验证文件完整性）
+    print(f"   🔄 加载模型到内存...")
+    load_start = time.monotonic()
     model = WhisperModel(
-        model_size_or_path=model_name,
+        model_size_or_path=local_path,
         device="cpu",
         compute_type="int8",
-        download_root=download_root,
     )
-    elapsed = time.monotonic() - start
+    load_time = time.monotonic() - load_start
+    total_time = time.monotonic() - download_start
 
     print(f"\n✅ 模型下载并加载成功!")
     print(f"   模型: {model_name}")
-    print(f"   耗时: {elapsed:.1f} 秒")
+    print(f"   下载耗时: {download_time:.1f}s")
+    print(f"   加载耗时: {load_time:.1f}s")
+    print(f"   总耗时: {total_time:.1f}s")
 
-    # 获取实际路径
-    actual_path = str(model.model_path) if hasattr(model, 'model_path') else model_name
-    return actual_path
+    return local_path
 
 
-def verify_inference(model_size: str, download_root: str | None = None) -> None:
+def verify_inference(model_size: str, download_root: str | None = None,
+                     model_path: str | None = None) -> None:
     """用合成音频验证模型推理。
 
     Args:
         model_size: 模型大小。
         download_root: 模型缓存目录。
+        model_path: 已下载的本地路径（避免重复下载）。
     """
     import numpy as np
     from faster_whisper import WhisperModel
 
     model_name = f"Systran/faster-whisper-{model_size}"
+    local_path = model_path or model_name
 
     print(f"\n🔬 验证推理: {model_name}")
+    print(f"   加载路径: {local_path}")
     print(f"   生成 3 秒合成语音信号...")
 
     # 生成合成音频（模拟语音的调频信号）
@@ -194,7 +234,7 @@ def verify_inference(model_size: str, download_root: str | None = None) -> None:
     print(f"   加载模型...")
     load_start = time.monotonic()
     model = WhisperModel(
-        model_size_or_path=model_name,
+        model_size_or_path=local_path,
         device="cpu",
         compute_type="int8",
         download_root=download_root,
@@ -241,11 +281,11 @@ def main() -> None:
 
     try:
         # 下载模型
-        download_model(args.model, args.dir, args.force)
+        local_path = download_model(args.model, args.dir, args.force)
 
         # 可选验证
         if args.verify:
-            verify_inference(args.model, args.dir)
+            verify_inference(args.model, args.dir, model_path=local_path)
 
         print(f"\n✨ 完成！")
         print(f"   下载命令: python -m tests.test_stt_download --model {args.model}")
