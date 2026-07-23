@@ -166,11 +166,11 @@ class TestAudioPreprocessing:
     def test_silence_detection(self, stt: FasterWhisperSTT):
         """Near-silence audio returns empty result through fast path."""
         silence = np.zeros(16000, dtype=np.float32)  # 1s silence
-        assert stt._is_silence(silence) is True
+        assert stt._is_silence(silence)
 
     def test_speech_detection(self, stt: FasterWhisperSTT, sample_audio):
         """Audio with signal is not silence."""
-        assert stt._is_silence(sample_audio) is False
+        assert not stt._is_silence(sample_audio)
 
 
 # ─── Async Transcribe Tests ─────────────────────────────────────
@@ -182,8 +182,10 @@ class TestTranscribe:
     @pytest.mark.asyncio
     async def test_transcribe_raises_before_load(self, stt: FasterWhisperSTT,
                                                   sample_audio):
-        """Transcribe raises if model not loaded."""
-        with pytest.raises(RuntimeError, match="not loaded"):
+        """Transcribe attempts lazy load when model not loaded."""
+        # Without faster-whisper installed, transcribe should raise
+        # ImportError when it tries to lazy-load the model
+        with pytest.raises(ImportError, match="faster-whisper"):
             await stt.transcribe(sample_audio)
 
     @pytest.mark.asyncio
