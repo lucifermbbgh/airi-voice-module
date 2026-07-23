@@ -180,13 +180,21 @@ class TestTranscribe:
     """Transcribe method tests (mocked, no real model)."""
 
     @pytest.mark.asyncio
-    async def test_transcribe_raises_before_load(self, stt: FasterWhisperSTT,
-                                                  sample_audio):
-        """Transcribe attempts lazy load when model not loaded."""
-        # Without faster-whisper installed, transcribe should raise
-        # ImportError when it tries to lazy-load the model
-        with pytest.raises(ImportError, match="faster-whisper"):
-            await stt.transcribe(sample_audio)
+    @pytest.mark.parametrize("side_effect,expected_match", [
+        (ImportError("faster-whisper not installed"), r"faster-whisper"),
+    ])
+    async def test_transcribe_raises_before_load(
+        self, stt: FasterWhisperSTT, sample_audio,
+        side_effect: Exception, expected_match: str,
+    ):
+        """Transcribe raises error when model lazy-load fails."""
+        import unittest.mock as mock
+
+        with mock.patch.object(stt, 'load_model', side_effect=side_effect):
+            with pytest.raises(Exception, match=expected_match):
+                await stt.transcribe(sample_audio)
+        # After the error, model should still not be loaded
+        assert not stt.is_loaded
 
     @pytest.mark.asyncio
     async def test_transcribe_empty_audio(self, stt: FasterWhisperSTT):

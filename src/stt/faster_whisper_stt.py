@@ -166,7 +166,8 @@ class FasterWhisperSTT:
                 "Or add it to requirements.txt"
             )
 
-        model_name = f"guillaumeklay/faster-whisper-{self.model_size}"
+        # Official faster-whisper CTranslate2 models on HuggingFace
+        model_name = f"Systran/faster-whisper-{self.model_size}"
 
         logger.info(
             "Loading STT model: {} (device={}, compute={})",
