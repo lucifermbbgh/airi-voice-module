@@ -1,5 +1,13 @@
 # AIRI Voice Module - Python Dependencies
 # Python 3.12+
+#
+# ⚠️ 注意：silero-vad 会拉取 PyTorch + CUDA (~1GB)
+# 本项目通过 ONNX Runtime 直加载本地 models/silero_vad.onnx
+# 不需要安装 silero-vad pip 包！
+#
+# Windows 安装命令（跳过 SSL 问题 + 跳过 PyTorch）:
+#   pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org ^
+#     sounddevice numpy scipy onnxruntime websockets pyyaml loguru
 
 # Audio I/O
 sounddevice>=0.5.0
@@ -8,10 +16,10 @@ sounddevice>=0.5.0
 numpy>=1.26.0
 scipy>=1.14.0
 
-# Voice Activity Detection
-silero-vad>=4.0
+# Voice Activity Detection (使用本地 ONNX 模型，不需要此包)
+# silero-vad>=4.0  # 可选：安装后可自动发现内嵌的 ONNX 模型，但会拉 PyTorch
 
-# ONNX Runtime (for Silero VAD)
+# ONNX Runtime (VAD 模型推理，替代 PyTorch)
 onnxruntime>=1.17.0
 
 # WebSocket (AIRI connection)
