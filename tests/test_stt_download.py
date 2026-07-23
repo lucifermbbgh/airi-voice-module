@@ -7,7 +7,7 @@ STT 模型下载与验证工具
     python -m tests.test_stt_download                          # 下载 tiny 模型（默认）
     python -m tests.test_stt_download --model small             # 下载 small 模型
     python -m tests.test_stt_download --model tiny --verify     # 下载并验证推理
-    python -m tests.test_stt_download --model tiny --dir D:\models\whisper  # 指定下载目录
+    python -m tests.test_stt_download --model tiny --dir D:/models/whisper  # 指定下载目录
     python -m tests.test_stt_download --list-models             # 列出可用模型
 """
 
