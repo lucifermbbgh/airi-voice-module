@@ -10,9 +10,11 @@ Fallback: Edge-TTS (zero-install, online API).
 
 from __future__ import annotations
 
+from src.tts.cosyvoice_tts import CosyVoiceTTS
 from src.tts.tts_engine import TTSBase, TTSResult
 
 __all__ = [
+    "CosyVoiceTTS",
     "TTSBase",
     "TTSResult",
 ]

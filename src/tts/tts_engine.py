@@ -178,10 +178,12 @@ class TTSBase(abc.ABC):
         if len(audio) == 0:
             return audio
 
-        current_peak = np.max(np.abs(audio))
+        current_peak = float(np.max(np.abs(audio)))
         if current_peak > 0:
             gain = target_peak / current_peak
-            return np.clip(audio * gain, -1.0, 1.0)
+            scaled = audio * gain
+            # Clip to target peak to avoid floating-point overshoot
+            return np.clip(scaled, -target_peak, target_peak)
         return audio
 
     @staticmethod
