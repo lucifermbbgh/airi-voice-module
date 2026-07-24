@@ -52,5 +52,25 @@ logging:
   file: "logs/voice-module.log"
   rotation: "10 MB"
 
+tts:
+  # Engine configuration
+  engine: "cosyvoice"                  # cosyvoice / edge_tts
+  model_size: "base"                   # base / small
+  model_dir: null                      # null = ModelScope cache; or "models/CosyVoice-2/"
+
+  # Voice configuration
+  voice_id: "default"                  # Voice/speaker ID
+  speed: 1.0                           # Speaking speed (0.5-2.0)
+  sample_rate: 24000                   # Output sample rate (Hz)
+
+  # Inference configuration
+  device: "cpu"                        # cpu / cuda
+  streaming: true                      # Stream audio for low-latency playback
+
+  # Caching
+  enable_cache: true                   # Cache frequent phrases
+  cache_size: 128                      # Max cache entries
+  max_text_length: 500                 # Max text length per synthesis
+
 pipeline:
   speech_buffer_max_duration: 10.0  # Max duration of speech buffer (seconds)
