@@ -24,15 +24,17 @@ Phase 2 STT (Speech-to-Text) 测试覆盖了以下模块：
 
 ## 二、测试环境
 
-### 开发环境（Linux）
+### 开发环境（Linux）✅ 已验证
 
 | 项目 | 值 |
 |:----|:----|
-| 系统 | WSL / Linux 开发服务器 |
-| Python | 3.14 |
-| 测试模式 | 纯单元测试（无硬件依赖） |
+| 系统 | Linux (WSL / 开发服务器) |
+| Python | 3.14.4 |
+| 测试框架 | pytest 9.1.1 + asyncio 1.4.0 |
+| 测试模式 | 纯单元测试 + 集成测试（无硬件依赖） |
+| 测试结果 | 67/67 通过 (0.16s) |
 
-### 目标部署环境（Windows）
+### 目标部署环境（Windows）✅ 已验证
 
 | 项目 | 值 |
 |:----|:----|
@@ -42,6 +44,8 @@ Phase 2 STT (Speech-to-Text) 测试覆盖了以下模块：
 | 项目路径 | `D:\DevProject\PythonProject\airi-voice-module` |
 | 虚拟环境 | `.venv` (Windows 原生 Python 创建) |
 | 声卡 | Realtek(R) Audio（麦克风阵列） |
+| 测试框架 | pytest 9.1.1 + asyncio 1.4.0 |
+| 测试结果 | **67/67 通过 (0.39s)** |
 | 依赖安装 | `pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org` |
 
 ---
@@ -90,7 +94,7 @@ Phase 2 收尾工作新增 **46 项集成测试**，覆盖以下组件：
 | `TestDownloadScript` | 模型下载脚本（参数/输出/路径） | 5 | ✅ |
 | `TestSTTModuleExports` | 模块导出完整性 | 3 | ✅ |
 
-**集成测试总计: 46/46 通过 | 耗时: 0.16s (Linux)**
+**集成测试总计: 46/46 通过 | 耗时: 0.16s (Linux) / 0.39s (Windows)**
 
 ### 3.3 总测试统计
 
@@ -99,6 +103,7 @@ Phase 2 收尾工作新增 **46 项集成测试**，覆盖以下组件：
 | 单元测试 | 21 | 21 | 0 |
 | 集成测试 | 46 | 46 | 0 |
 | **合计** | **67** | **67** | **0** |
+| 双平台验证 | Linux ✅ 0.16s + Windows ✅ **0.39s** | 2/2 | 0 |
 
 ---
 
