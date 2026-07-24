@@ -432,7 +432,7 @@ python -m src.main
 
 ## 十一、Windows 测试指南
 
-### 10.1 环境准备
+### 11.1 环境准备
 
 ```powershell
 # 1. 克隆项目
@@ -449,7 +449,7 @@ pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org `
   faster-whisper huggingface-hub pytest pytest-asyncio
 ```
 
-### 10.2 下载模型（首次使用）
+### 11.2 下载模型（首次使用）
 
 ```powershell
 # 推荐先预下载 small 模型，避免首次 9 分钟等待
@@ -464,7 +464,7 @@ python scripts\download_models.py --model-size tiny --verify
 > $env:HF_TOKEN = "hf_your_token_here"
 > ```
 
-### 10.3 运行测试
+### 11.3 运行测试
 
 ```powershell
 # 进入项目目录
@@ -485,7 +485,7 @@ python -m pytest tests\test_stt_integration.py -v
 
 > **预期结果**: 67/67 全部通过（21 单元 + 46 集成）
 
-### 10.4 运行诊断工具
+### 11.4 运行诊断工具
 
 ```powershell
 # STT 测试模式（说话 → 实时转写，无需 AIRI）
@@ -501,7 +501,7 @@ python -m src.main --list-devices
 python scripts\download_models.py --model-size tiny --verify
 ```
 
-### 10.5 硬件诊断
+### 11.5 硬件诊断
 
 ```powershell
 # 查看音频设备
@@ -517,14 +517,14 @@ python -m tests.test_stt_inference --model small --duration 10
 python -m tests.test_stt_inference --file test.wav
 ```
 
-### 10.6 全模式运行（VAD → STT → AIRI）
+### 11.6 全模式运行（VAD → STT → AIRI）
 
 ```powershell
 # 需要先配置 config\default.yaml 中的 AIRI 连接信息
 python -m src.main
 ```
 
-### 10.7 已知 Windows 限制
+### 11.7 已知 Windows 限制
 
 | 问题 | 说明 | 应对 |
 |:----|:-----|:-----|
