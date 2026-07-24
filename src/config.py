@@ -60,6 +60,21 @@ class LoggingConfig:
 
 
 @dataclass
+class STTConfig:
+    """Speech-to-Text configuration."""
+    model_size: str = "small"
+    device: str = "cpu"
+    compute_type: str = "int8"
+    model_dir: str | None = None
+    language: str | None = "zh"
+    beam_size: int = 5
+    vad_filter: bool = True
+    hotwords: list[str] = field(default_factory=list)
+    enable_post_processing: bool = True
+    min_confidence: float = 0.3
+
+
+@dataclass
 class PipelineConfig:
     """Audio pipeline configuration."""
     speech_buffer_max_duration: float = 10.0
@@ -70,6 +85,7 @@ class Config:
     """Application configuration."""
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
+    stt: STTConfig = field(default_factory=STTConfig)
     airi: AIRIConfig = field(default_factory=AIRIConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
@@ -80,6 +96,8 @@ class Config:
             self.audio = AudioConfig(**self.audio)
         if isinstance(self.vad, dict):
             self.vad = VADConfig(**self.vad)
+        if isinstance(self.stt, dict):
+            self.stt = STTConfig(**self.stt)
         if isinstance(self.airi, dict):
             self.airi = AIRIConfig(**self.airi)
         if isinstance(self.logging, dict):
@@ -97,6 +115,10 @@ ENV_MAP: dict[str, str] = {
     "AUDIO_OUTPUT_DEVICE": "audio.output_device",
     "VAD_THRESHOLD": "vad.threshold",
     "LOG_LEVEL": "logging.level",
+    "STT_MODEL_SIZE": "stt.model_size",
+    "STT_LANGUAGE": "stt.language",
+    "STT_DEVICE": "stt.device",
+    "STT_COMPUTE_TYPE": "stt.compute_type",
 }
 
 
@@ -183,6 +205,18 @@ def _default_dict() -> dict:
             "min_speech_duration": 0.25,
             "min_silence_duration": 0.5,
             "frame_size": 512,
+        },
+        "stt": {
+            "model_size": "small",
+            "device": "cpu",
+            "compute_type": "int8",
+            "model_dir": None,
+            "language": "zh",
+            "beam_size": 5,
+            "vad_filter": True,
+            "hotwords": [],
+            "enable_post_processing": True,
+            "min_confidence": 0.3,
         },
         "airi": {
             "host": "localhost",
