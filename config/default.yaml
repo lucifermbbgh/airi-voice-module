@@ -20,6 +20,25 @@ vad:
   min_silence_duration: 0.5             # Minimum silence to end utterance (seconds)
   frame_size: 512                        # Frame size at target sample rate
 
+stt:
+  # Model configuration
+  model_size: "small"                    # tiny / base / small / medium / large-v3
+  device: "cpu"                          # cpu / cuda
+  compute_type: "int8"                   # int8 / float16 / float32
+  model_dir: null                        # null = HuggingFace cache; or "models/"
+
+  # Inference parameters
+  language: "zh"                         # zh / en / null (auto-detect)
+  beam_size: 5                           # Beam search width (1-10)
+  vad_filter: true                       # Whisper built-in VAD pre-filter
+
+  # Post-processing
+  enable_post_processing: true           # Enable text post-processor
+  min_confidence: 0.3                    # Minimum confidence to accept result
+
+  # Hotwords (boost recognition of specific terms)
+  hotwords: []                           # e.g. ["AIRI", "Claude"]
+
 airi:
   host: "localhost"
   port: 10443                    # AIRI WebSocket port

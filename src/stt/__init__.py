@@ -11,8 +11,10 @@ Fallback: SenseVoice (if Chinese accuracy requirements exceed Whisper).
 from __future__ import annotations
 
 from src.stt.faster_whisper_stt import FasterWhisperSTT, STTResult
+from src.stt.post_processor import TextPostProcessor
 
 __all__ = [
     "FasterWhisperSTT",
     "STTResult",
+    "TextPostProcessor",
 ]
