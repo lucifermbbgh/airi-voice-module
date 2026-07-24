@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from src.tts.cosyvoice_tts import CosyVoiceTTS
 from src.tts.tts_engine import TTSBase, TTSResult
+from src.tts.tts_manager import TTSCache, TTSManager
 
 __all__ = [
     "CosyVoiceTTS",
     "TTSBase",
     "TTSResult",
+    "TTSCache",
+    "TTSManager",
 ]
