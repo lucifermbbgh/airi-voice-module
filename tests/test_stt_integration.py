@@ -537,7 +537,9 @@ class TestDownloadScript:
         from scripts.download_models import _get_download_dir
 
         download_dir = _get_download_dir("tiny", "/custom/path")
-        assert str(download_dir) == "/custom/path"
+        # Cross-platform check: the path should end with "custom/path"
+        # regardless of OS path separator
+        assert str(download_dir).replace("\\", "/").endswith("/custom/path")
 
 
 # ══════════════════════════════════════════════════════════════════════
