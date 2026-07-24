@@ -75,6 +75,22 @@ class STTConfig:
 
 
 @dataclass
+class TTSConfig:
+    """Text-to-Speech configuration."""
+    engine: str = "cosyvoice"
+    model_size: str = "base"
+    model_dir: str | None = None
+    voice_id: str = "default"
+    speed: float = 1.0
+    sample_rate: int = 24000
+    device: str = "cpu"
+    streaming: bool = True
+    max_text_length: int = 500
+    enable_cache: bool = True
+    cache_size: int = 128
+
+
+@dataclass
 class PipelineConfig:
     """Audio pipeline configuration."""
     speech_buffer_max_duration: float = 10.0
@@ -86,6 +102,7 @@ class Config:
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
     stt: STTConfig = field(default_factory=STTConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
     airi: AIRIConfig = field(default_factory=AIRIConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
@@ -98,6 +115,8 @@ class Config:
             self.vad = VADConfig(**self.vad)
         if isinstance(self.stt, dict):
             self.stt = STTConfig(**self.stt)
+        if isinstance(self.tts, dict):
+            self.tts = TTSConfig(**self.tts)
         if isinstance(self.airi, dict):
             self.airi = AIRIConfig(**self.airi)
         if isinstance(self.logging, dict):
@@ -119,6 +138,10 @@ ENV_MAP: dict[str, str] = {
     "STT_LANGUAGE": "stt.language",
     "STT_DEVICE": "stt.device",
     "STT_COMPUTE_TYPE": "stt.compute_type",
+    "TTS_ENGINE": "tts.engine",
+    "TTS_VOICE_ID": "tts.voice_id",
+    "TTS_SPEED": "tts.speed",
+    "TTS_DEVICE": "tts.device",
 }
 
 
@@ -230,6 +253,19 @@ def _default_dict() -> dict:
             "format": "{time:HH:mm:ss.SSS} | {level:<7} | {name}:{function}:{line} | {message}",
             "file": "logs/voice-module.log",
             "rotation": "10 MB",
+        },
+        "tts": {
+            "engine": "cosyvoice",
+            "model_size": "base",
+            "model_dir": None,
+            "voice_id": "default",
+            "speed": 1.0,
+            "sample_rate": 24000,
+            "device": "cpu",
+            "streaming": True,
+            "max_text_length": 500,
+            "enable_cache": True,
+            "cache_size": 128,
         },
         "pipeline": {
             "speech_buffer_max_duration": 10.0,
