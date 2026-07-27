@@ -184,7 +184,7 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 | main.py 编译检查 | ✅ 通过 |
 | `--test-tts` argparse 解析 | ✅ 通过 |
 | `--test-tts-no-play` argparse 解析 | ✅ 通过 |
-| Windows 验证 (Step 7) | ⏳ 待执行 |
+| Windows 验证 (Step 7) | ⏳ 进行中 (~40%) |
 
 ---
 
@@ -192,10 +192,14 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 
 | 问题 | 影响 | 状态 | 说明 |
 |:----|:----|:----:|:------|
-| CosyVoice 2 未安装 | Phase 3 全链路 | 🟡 待验证 | Windows 上需 `pip install cosyvoice` |
+| CosyVoice 2 未安装 | Phase 3 全链路 | 🟡 待验证 | Windows 上需从 GitHub 源码安装 (`https://github.com/QwenAudio/CosyVoice.git`) |
 | Edge-TTS 未安装 | TTS 轻量备用方案 | 🟢 低 | `pip install edge-tts` 即装即用 |
-| Windows 全链路验证 | Phase 3 完整闭环 | ⏳ 待执行 | 运行 `scripts/test_tts_windows.py --mode all` |
-| main.py 集成 (Step 5) | — | ✅ 已完成 | `--test-tts` / `--test-tts-no-play` / AIRI→TTS 回调
+| Windows 全链路验证 | Phase 3 完整闭环 | ⏳ 进行中 (~40%) | 见下方的 [Step 7 Windows 部署进度] |
+| main.py 集成 (Step 5) | — | ✅ 已完成 | `--test-tts` / `--test-tts-no-play` / AIRI→TTS 回调 |
+| Windows 网络: github.com:443 超时 | git fetch / submodule | 🟡 已规避 | 使用 v2rayN HTTP 代理 (`git config --global http.proxy http://127.0.0.1:10809`) |
+| Python 3.13 兼容: pkg_resources 缺失 | grpcio / grpcio-tools 编译 | ✅ 已修复 | 放宽版本 pin `==1.57.0` → `>=1.57.0`，改用预编译 wheel |
+| Python 3.13 兼容: numpy 1.26.4 无 wheel | numpy 从源码编译失败 | ✅ 已修复 | 放宽版本 pin `==1.26.4` → `>=1.26.4`，用已装的 numpy 2.3.2 |
+| Windows 缺少 C++ Build Tools | 依赖编译 | 🟢 已规避 | 放弃源码编译，改用有预编译 cp313 wheel 的新版本 |
 
 ---
 
@@ -231,8 +235,20 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 ### 下一步
 
 1. ✅ **main.py 集成 (Step 5)** — 新增 `--test-tts` / `--test-tts-no-play` 模式
-2. ⏳ **Windows 全模式运行 (Step 7)** — 在 Windows 上执行验证
-3. ⏳ **安装 CosyVoice 2** — 验证真实 TTS 合成 + 扬声器播放闭环
+2. ⏳ **Windows 全模式运行 (Step 7)** — 进行中:
+   - ✅ 基础依赖检查 (loguru/websockets/scipy/onnxruntime/sounddevice)
+   - ✅ CosyVoice 仓库克隆 (QwenAudio/CosyVoice)
+   - ✅ Matcha-TTS 子模块拉取
+   - ✅ grpcio 安装 (1.83.0 预编译 wheel)
+   - ✅ grpcio-tools 安装 (1.83.0 预编译 wheel)
+   - ✅ numpy 版本放宽 (使用已有 2.3.2)
+   - ⏳ `pip install -r requirements.txt` 剩余包
+   - ⏳ `pip install -e .` 安装 CosyVoice
+   - ⏳ 模型下载 (CosyVoice-2-0.5B ~1.5GB)
+   - ⏳ `scripts/test_tts_windows.py --mode check`
+   - ⏳ `scripts/test_tts_windows.py --mode synthesize`
+   - ⏳ `scripts/test_tts_windows.py --mode play`
+3. ⏳ **安装 CosyVoice 2** — 需完成 requirements 安装后 `pip install -e .`
 4. ⏳ **性能调优** — 利用 RTX 3070 Ti 的 CUDA 加速提升合成速度
 
 ### 已知限制
