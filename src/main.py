@@ -2,11 +2,13 @@
 AIRI Voice Module - Main entry point.
 
 Usage:
-    python -m src.main                  # Full mode (VAD → STT → AIRI)
-    python -m src.main --list-devices   # List audio devices
-    python -m src.main --test-vad       # Test VAD only (no STT, no AIRI)
-    python -m src.main --test-stt       # Test VAD → STT (no AIRI)
-    python -m src.main --config path    # Custom config path
+    python -m src.main                       # Full mode (VAD → STT → AIRI)
+    python -m src.main --list-devices        # List audio devices
+    python -m src.main --test-vad            # Test VAD only (no STT, no AIRI)
+    python -m src.main --test-stt            # Test VAD → STT (no AIRI)
+    python -m src.main --test-tts            # Test TTS (type text → hear speech)
+    python -m src.main --test-tts-no-play    # TTS → WAV file (no playback)
+    python -m src.main --config path         # Custom config path
 """
 
 from __future__ import annotations
@@ -17,12 +19,15 @@ import signal
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from src.audio.capture import AudioCapture
 from src.audio.playback import AudioPlayback
 from src.config import load_config
 from src.logger import get_logger, setup_logging
 from src.pipeline.audio_pipeline import AudioPipeline
 from src.stt import FasterWhisperSTT, TextPostProcessor
+from src.tts import CosyVoiceTTS, TTSManager
 from src.vad.silero_vad import SpeechEventType
 
 logger = get_logger(__name__)
@@ -57,6 +62,20 @@ def _parse_args() -> argparse.Namespace:
         "--test-stt",
         action="store_true",
         help="Run in STT test mode (capture → VAD → STT → log transcriptions)",
+    )
+    parser.add_argument(
+        "--test-tts",
+        action="store_true",
+        help="Run in TTS test mode (type text → hear speech output)",
+    )
+    parser.add_argument(
+        "--test-tts-no-play",
+        type=str,
+        nargs="?",
+        const="output/tts_test.wav",
+        metavar="OUTPUT_WAV",
+        help="Run TTS synthesis only (no playback), save to WAV file. "
+             "Default: output/tts_test.wav. Useful for headless verification.",
     )
     return parser.parse_args()
 
@@ -183,12 +202,203 @@ async def _run_test_stt(
         print("\nSTT test complete.")
 
 
+async def _run_test_tts(
+    tts_config,
+    playback: AudioPlayback | None = None,
+) -> None:
+    """Run TTS interactive test mode.
+
+    Users type text at the prompt and hear the synthesised speech.
+    Type 'exit' or Ctrl+C to quit.
+
+    Args:
+        tts_config: TTSConfig instance.
+        playback: Optional pre-existing AudioPlayback (creates one if None).
+    """
+    own_playback = playback is None
+    pb = playback or AudioPlayback(
+        device_id=None,
+        sample_rate=tts_config.sample_rate,
+    )
+
+    try:
+        await pb.start()
+        print("\n🔊 TTS Test Mode - Interactive Text-to-Speech")
+        print("=" * 60)
+        print(f"   Engine: {tts_config.engine} ({tts_config.model_size})")
+        print(f"   Voice: {tts_config.voice_id}, Speed: {tts_config.speed}")
+        print(f"   Device: {tts_config.device}")
+        print(f"   Streaming: {tts_config.streaming}")
+        print("=" * 60)
+        print("   Type text and press Enter to hear it spoken.")
+        print("   Type 'exit' or 'quit' to stop.\n")
+
+        # Initialize TTS engine
+        if tts_config.engine == "cosyvoice":
+            engine = CosyVoiceTTS(
+                model_size=tts_config.model_size,
+                device=tts_config.device,
+                model_dir=tts_config.model_dir,
+                sample_rate=tts_config.sample_rate,
+                default_voice=tts_config.voice_id,
+                default_speed=tts_config.speed,
+            )
+        else:
+            print(f"❌ Unsupported engine: {tts_config.engine}")
+            print("   Currently supported: cosyvoice")
+            return
+
+        tts_mgr = TTSManager(engine=engine, playback=pb)
+
+        # Interactive loop
+        while True:
+            try:
+                text = input("📝 TTS > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n")
+                break
+
+            if not text:
+                continue
+            if text.lower() in ("exit", "quit", "q"):
+                break
+
+            print(f"   🔊 Synthesising {len(text)} chars...")
+            if tts_config.streaming and len(text) > 20:
+                result = await tts_mgr.say_stream(text)
+            else:
+                result = await tts_mgr.say(text)
+            print(f"   ✅ Done (played={result})")
+
+    except ImportError as e:
+        print(f"\n❌ Engine import error: {e}")
+        print("   Install the required package:\n"
+              f"     pip install {tts_config.engine}")
+    except Exception as e:
+        print(f"\n❌ TTS error: {e}")
+        logger.error("TTS test error: {}", e)
+    finally:
+        if own_playback:
+            await pb.stop()
+
+
+async def _run_test_tts_no_play(
+    tts_config,
+    output_path: str = "output/tts_test.wav",
+) -> None:
+    """Run TTS synthesis test without playback (save to WAV).
+
+    Useful for headless verification (e.g. Windows without speaker).
+
+    Args:
+        tts_config: TTSConfig instance.
+        output_path: Path to save the WAV file.
+    """
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    print("\n🔊 TTS No-Playback Test Mode - Text → WAV File")
+    print("=" * 60)
+    print(f"   Engine: {tts_config.engine} ({tts_config.model_size})")
+    print(f"   Voice: {tts_config.voice_id}, Speed: {tts_config.speed}")
+    print(f"   Output: {output_file}")
+    print("=" * 60)
+    print("   Type text and press Enter to synthesise.")
+    print("   Type 'exit' or 'quit' to stop.\n")
+
+    # Initialize TTS engine
+    try:
+        if tts_config.engine == "cosyvoice":
+            engine = CosyVoiceTTS(
+                model_size=tts_config.model_size,
+                device=tts_config.device,
+                model_dir=tts_config.model_dir,
+                sample_rate=tts_config.sample_rate,
+                default_voice=tts_config.voice_id,
+                default_speed=tts_config.speed,
+            )
+        else:
+            print(f"❌ Unsupported engine: {tts_config.engine}")
+            return
+
+        test_texts = [
+            "你好，我是 AIRI，你的智能语音助手。",
+            "今天天气真不错，适合出去散步。",
+            "欢迎使用语音对话模块，Text-to-Speech 功能已就绪。",
+        ]
+
+        for i, text in enumerate(test_texts):
+            print(f"\n   [{i + 1}/{len(test_texts)}] Synthesising {len(text)} chars...")
+            print(f"       Text: \"{text}\"")
+            result = await engine.synthesize(
+                text,
+                voice_id=tts_config.voice_id,
+                speed=tts_config.speed,
+            )
+
+            if len(result.audio) > 0:
+                wav_path = output_file.parent / f"tts_test_{i + 1}.wav"
+                from scipy.io import wavfile
+                wavfile.write(
+                    str(wav_path),
+                    result.sample_rate,
+                    (result.audio * 32767).astype(np.int16),
+                )
+                print(f"       ✅ Saved: {wav_path}")
+                print(f"          Duration: {result.duration:.2f}s, "
+                      f"RTF: {result.synthesis_time / result.duration:.2f}"
+                      if result.duration > 0 else "")
+            else:
+                print(f"       ⚠️  Empty audio (synthesis_time={result.synthesis_time:.2f}s)")
+
+        # Interactive mode after preset tests
+        print("\n" + "=" * 60)
+        print("   Preset tests done. Enter custom text ('exit' to quit):")
+        while True:
+            try:
+                text = input("📝 TTS > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n")
+                break
+
+            if not text:
+                continue
+            if text.lower() in ("exit", "quit", "q"):
+                break
+
+            result = await engine.synthesize(
+                text, voice_id=tts_config.voice_id, speed=tts_config.speed,
+            )
+            if len(result.audio) > 0:
+                wav_path = output_file.parent / f"tts_custom.wav"
+                from scipy.io import wavfile
+                wavfile.write(
+                    str(wav_path),
+                    result.sample_rate,
+                    (result.audio * 32767).astype(np.int16),
+                )
+                print(f"   ✅ Saved: {wav_path} ({result.duration:.2f}s)")
+            else:
+                print(f"   ⚠️  Empty audio")
+
+    except ImportError as e:
+        print(f"\n❌ Engine import error: {e}")
+    except Exception as e:
+        print(f"\n❌ TTS error: {e}")
+        logger.error("TTS no-playback test error: {}", e)
+    finally:
+        await engine.cleanup()
+        print(f"\n✅ All WAV files saved to: {output_file.parent}/")
+
+
 async def _run_full(
     pipeline: AudioPipeline,
     stt: FasterWhisperSTT,
     post_processor: TextPostProcessor | None = None,
 ) -> None:
-    """Run full voice pipeline with STT and AIRI connection.
+    """Run full voice pipeline with STT, AIRI, and TTS.
+
+    Full chain: VAD → STT → AIRI → TTS → AudioPlayback.
 
     Args:
         pipeline: Configured AudioPipeline instance.
@@ -206,8 +416,69 @@ async def _run_full(
         max_attempts=pipeline.config.airi.max_reconnect_attempts,
     )
 
+    # Initialize AudioPlayback for TTS output
+    playback = AudioPlayback(
+        device_id=pipeline.config.audio.output_device,
+        sample_rate=pipeline.config.audio.output_sample_rate,
+    )
+
+    # Initialize TTS Manager
+    tts_mgr = None
+    try:
+        tts_cfg = pipeline.config.tts
+        if tts_cfg.engine == "cosyvoice":
+            tts_engine = CosyVoiceTTS(
+                model_size=tts_cfg.model_size,
+                device=tts_cfg.device,
+                model_dir=tts_cfg.model_dir,
+                sample_rate=tts_cfg.sample_rate,
+                default_voice=tts_cfg.voice_id,
+                default_speed=tts_cfg.speed,
+            )
+        else:
+            logger.warning("Unsupported TTS engine '{}', TTS disabled",
+                           tts_cfg.engine)
+            tts_engine = None
+
+        if tts_engine is not None:
+            tts_mgr = TTSManager(
+                engine=tts_engine,
+                playback=playback,
+            )
+            logger.info("TTS initialized: engine={}, voice={}, speed={}",
+                        tts_cfg.engine, tts_cfg.voice_id, tts_cfg.speed)
+        else:
+            logger.info("TTS disabled: no engine available")
+    except ImportError as e:
+        logger.warning("TTS engine import error (TTS disabled): {}", e)
+        tts_mgr = None
+    except Exception as e:
+        logger.warning("TTS initialization error (TTS disabled): {}", e)
+        tts_mgr = None
+
     # Track connection status
     airi_connected = False
+
+    # ── AIRI → TTS handler ──────────────────────────────────────────
+    if tts_mgr is not None:
+        async def _on_airi_message(data: dict) -> None:
+            """Handle AIRI chat message → TTS playback.
+
+            Extracts text from AIRI's output:gen-ai:chat:message event
+            and feeds it to the TTS pipeline.
+
+            Args:
+                data: Event data dict from AIRI.
+            """
+            # Try common message formats
+            text = (data.get("text") or data.get("message")
+                    or data.get("content") or "")
+            if text:
+                logger.debug("AIRI→TTS: \"{}\"", text[:80])
+                await tts_mgr.say(text)
+
+        airi.on("output:gen-ai:chat:message", _on_airi_message)
+        logger.info("AIRI→TTS handler registered")
 
     async def on_speech(event) -> None:
         """Speech event → STT → AIRI pipeline.
@@ -262,6 +533,10 @@ async def _run_full(
     print(f"   AIRI: ws://{pipeline.config.airi.host}:{pipeline.config.airi.port}")
 
     try:
+        # Start audio playback
+        await playback.start()
+        logger.info("AudioPlayback started for TTS output")
+
         # Start AIRI client in background
         airi_task = asyncio.create_task(airi.run(), name="airi")
 
@@ -296,6 +571,10 @@ async def _run_full(
         except asyncio.CancelledError:
             pass
         await airi.stop()
+        # Cleanup TTS
+        if tts_mgr is not None:
+            await tts_mgr.cleanup()
+        await playback.stop()
         print("\nVoice module stopped.")
 
 
@@ -371,6 +650,14 @@ async def _async_main(args: argparse.Namespace) -> None:
         elif args.test_stt:
             task = asyncio.create_task(
                 _run_test_stt(pipeline, stt, post_processor)
+            )
+        elif args.test_tts:
+            task = asyncio.create_task(
+                _run_test_tts(config.tts)
+            )
+        elif args.test_tts_no_play:
+            task = asyncio.create_task(
+                _run_test_tts_no_play(config.tts, args.test_tts_no_play)
             )
         else:
             task = asyncio.create_task(
