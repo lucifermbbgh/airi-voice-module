@@ -1,9 +1,9 @@
 # AIRI Voice Module — Phase 3 TTS 测试报告
 
-> **日期**: 2026-07-24
+> **日期**: 2026-07-27 (修订 v1.1: 新增 main.py Step 5 集成)
 > **目标平台**: Windows 11 (Python 3.13.2) + NVIDIA GeForce RTX 3070 Ti
 > **项目路径**: `D:\DevProject\PythonProject\airi-voice-module`
-> **Git Commit**: `edba0fd`（含 env_check）/ Phase 3 完整代码
+> **Git Commit**: (含 Step 5 main.py TTS 集成)
 > **引擎**: CosyVoice 2 (默认) / Edge-TTS (备用)
 > **加速**: ✅ CUDA 12.4 + PyTorch 2.6.0+cu124 (RTX 3070 Ti)
 
@@ -137,13 +137,65 @@ Phase 3 TTS (Text-to-Speech) 测试覆盖以下模块：
 
 ---
 
+## 五-A. Step 5: main.py TTS 集成（2026-07-27 新增）
+
+**状态: ✅ 已实现**
+
+### 新增命令行参数
+
+```bash
+python -m src.main --test-tts              # 交互式 TTS 测试（打字→听语音）
+python -m src.main --test-tts-no-play       # TTS 合成→保存 WAV（无播放）
+python -m src.main --test-tts-no-play /path/to/output.wav  # 指定输出路径
+```
+
+### 修改文件
+
+| 文件 | 变更 |
+|:----|:-----|
+| `src/main.py` (+115 行) | 1. 导入 TTS 模块<br>2. 新增 `--test-tts` / `--test-tts-no-play` CLI 参数<br>3. 新增 `_run_test_tts()` — 交互式打字→语音测试<br>4. 新增 `_run_test_tts_no_play()` — 文本→WAV 文件<br>5. `_run_full()` 集成 TTS：初始化 TTSManager + AudioPlayback<br>6. 注册 AIRI `output:gen-ai:chat:message` 回调→TTS 播放<br>7. `_async_main()` 路由分发 |
+
+### 新增文件
+
+| 文件 | 说明 |
+|:----|:-----|
+| `scripts/test_tts_windows.py` | Windows 验证脚本 (`--mode check/synthesize/play/all`) |
+
+### AIRI → TTS 全链路数据流
+
+```
+VAD 检测到语音 → STT 识别 → AIRI 处理
+    ↓
+AIRI 回复 (output:gen-ai:chat:message)
+    ↓
+on_airi_message() 回调
+    ↓
+TTSManager.say(text)
+    ↓
+CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
+```
+
+### 测试状态
+
+| 测试 | 结果 |
+|:----|:----:|
+| TTS 单元测试 (39 项) | ✅ 全部通过 |
+| TTS 集成测试 (28 项) | ✅ 全部通过 |
+| main.py 编译检查 | ✅ 通过 |
+| `--test-tts` argparse 解析 | ✅ 通过 |
+| `--test-tts-no-play` argparse 解析 | ✅ 通过 |
+| Windows 验证 (Step 7) | ⏳ 待执行 |
+
+---
+
 ## 六、已知问题
 
 | 问题 | 影响 | 状态 | 说明 |
 |:----|:----|:----:|:------|
-| CosyVoice 2 未安装 | Phase 3 全链路 | 🟡 待验证 | Windows 上需从 GitHub 源码安装 |
+| CosyVoice 2 未安装 | Phase 3 全链路 | 🟡 待验证 | Windows 上需 `pip install cosyvoice` |
 | Edge-TTS 未安装 | TTS 轻量备用方案 | 🟢 低 | `pip install edge-tts` 即装即用 |
-| Windows 全链路验证 | Phase 3 完整闭环 | ⏳ 待执行 | 安装 TTS 引擎后验证真实合成+播放 |
+| Windows 全链路验证 | Phase 3 完整闭环 | ⏳ 待执行 | 运行 `scripts/test_tts_windows.py --mode all` |
+| main.py 集成 (Step 5) | — | ✅ 已完成 | `--test-tts` / `--test-tts-no-play` / AIRI→TTS 回调
 
 ---
 
@@ -178,10 +230,10 @@ Phase 3 TTS (Text-to-Speech) 测试覆盖以下模块：
 
 ### 下一步
 
-1. **安装 CosyVoice 2** — 验证真实 TTS 合成 + 扬声器播放闭环
-2. **安装 Edge-TTS**（备用）— `pip install edge-tts`，零模型依赖快速验证
-3. **Windows 全模式运行** — `python -m src.main` 验证 VAD→STT→TTS 全链路
-4. **性能调优** — 利用 RTX 3070 Ti 的 CUDA 加速提升合成速度
+1. ✅ **main.py 集成 (Step 5)** — 新增 `--test-tts` / `--test-tts-no-play` 模式
+2. ⏳ **Windows 全模式运行 (Step 7)** — 在 Windows 上执行验证
+3. ⏳ **安装 CosyVoice 2** — 验证真实 TTS 合成 + 扬声器播放闭环
+4. ⏳ **性能调优** — 利用 RTX 3070 Ti 的 CUDA 加速提升合成速度
 
 ### 已知限制
 
