@@ -155,85 +155,7 @@ except Exception:
 
 ---
 
-## 问题 5: Windows 网络连通性 — github.com:443 超时
-
-### 现象
-
-```powershell
-# git fetch / git clone / git submodule 全部报同样错误
-git fetch origin
-# fatal: unable to access 'https://github.com/...': Failed to connect to github.com port 443
-# after 21000 ms: Could not connect to server
-
-git submodule update --init --recursive
-# fatal: unable to access 'https://github.com/shivammehta25/Matcha-TTS.git/':
-# Failed to connect to github.com port 443
-```
-
-### 根因分析
-
-Windows 环境无法直连 GitHub（可能因防火墙、ISP 限制或网络策略）。影响范围：
-
-| 操作 | 影响 |
-|:----|:-----|
-| `git fetch/pull/push` | ✅ 已修复 (git proxy) |
-| `git submodule update` | ✅ 已修复 (git proxy) |
-| `pip install` | ⚠️ 偶发 `SSLEOFError`（代理 SSL 连接不稳定） |
-| `curl https://github.com` | ❌ 需代理 |
-
-### 解决方案
-
-使用 v2rayN 或同类工具的 HTTP 代理：
-
-```powershell
-# 查看 v2rayN 实际端口（参数设置 → 本地监听）
-# 默认: HTTP 10809 / SOCKS5 10808
-
-# Git 全局代理
-git config --global http.proxy http://127.0.0.1:10809
-git config --global https.proxy http://127.0.0.1:10809
-
-# 验证
-git config --global --list | findstr proxy
-# 应输出:
-#   http.proxy=http://127.0.0.1:10809
-#   https.proxy=http://127.0.0.1:10809
-```
-
-### Pip 代理配置
-
-```powershell
-# 方式 1: 环境变量（推荐，当前会话有效）
-$env:HTTP_PROXY="http://127.0.0.1:10809"
-$env:HTTPS_PROXY="http://127.0.0.1:10809"
-
-# 方式 2: pip 全局配置（永久生效）
-pip config set global.proxy http://127.0.0.1:10809
-
-# 方式 3: 单次命令
-pip install -r requirements.txt --proxy http://127.0.0.1:10809
-```
-
-### 临时解决方案
-
-GitHub Desktop 有时能绕过代理问题（使用不同的网络栈）。
-
-### 复现条件
-
-| 条件 | 值 |
-|:----|:----|
-| 操作系统 | Windows 11 |
-| 网络环境 | 无法直连 GitHub (443) |
-| 代理工具 | v2rayN HTTP @ 10809 |
-| Git 版本 | Windows 版 Git |
-
-### 状态
-
-✅ 已修复（代理配置）
-
----
-
-## 问题 6: grpcio / grpcio-tools 编译失败 — pkg_resources 缺失
+## 问题 5: grpcio / grpcio-tools 编译失败 — pkg_resources 缺失
 
 ### 现象
 
@@ -284,7 +206,7 @@ python -c "import grpc; import grpc_tools; print(f'grpcio: {grpc.__version__}')"
 
 ---
 
-## 问题 7: numpy 1.26.4 源码编译失败 — 无 C 编译器
+## 问题 6: numpy 1.26.4 源码编译失败 — 无 C 编译器
 
 ### 现象
 
@@ -332,22 +254,15 @@ pip install -r requirements.txt
 | 2 | 验证脚本缺失基础依赖检查 | 🟡 中 | ✅ 已修复 | 脚本 v2 已添加 |
 | 3 | Windows 基础依赖预装 | 🟢 低 | ✅ 已安装 | `pip install` 完成 |
 | 4 | CUDA→CPU fallback | 🟢 低 | ✅ 已实现 | 脚本 v2 已添加 |
-| 5 | Windows 网络: github.com:443 超时 | 🔴 高 | ✅ 已修复 | v2rayN HTTP 代理 |
-| 6 | grpcio / grpcio-tools 编译失败 (pkg_resources) | 🔴 高 | ✅ 已修复 | 放宽版本 pin → 预编译 wheel |
-| 7 | numpy 1.26.4 编译失败 (无 C 编译器) | 🟡 中 | ✅ 已修复 | 放宽版本 pin → 使用已有 2.3.2 |
-| 8 | Windows 全链路验证 (Step 7) | 🔴 高 | ⏳ 进行中 (~40%) | 完成 requirements → 安装 CosyVoice → 运行测试 |
+| 5 | grpcio / grpcio-tools 编译失败 (pkg_resources) | 🔴 高 | ✅ 已修复 | 放宽版本 pin → 预编译 wheel |
+| 6 | numpy 1.26.4 编译失败 (无 C 编译器) | 🟡 中 | ✅ 已修复 | 放宽版本 pin → 使用已有 2.3.2 |
+| 7 | Windows 全链路验证 (Step 7) | 🔴 高 | ⏳ 进行中 (~40%) | 完成 requirements → 安装 CosyVoice → 运行测试 |
 
 ---
 
 ## 验证回归清单
 
 ```powershell
-# 0. 设置代理（若网络不通）
-git config --global http.proxy http://127.0.0.1:10809
-git config --global https.proxy http://127.0.0.1:10809
-$env:HTTP_PROXY="http://127.0.0.1:10809"
-$env:HTTPS_PROXY="http://127.0.0.1:10809"
-
 # 1. 基础依赖检查
 pip install loguru numpy websockets pyyaml onnxruntime scipy sounddevice
 

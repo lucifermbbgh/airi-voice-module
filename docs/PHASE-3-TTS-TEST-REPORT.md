@@ -196,7 +196,6 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 | Edge-TTS 未安装 | TTS 轻量备用方案 | 🟢 低 | `pip install edge-tts` 即装即用 |
 | Windows 全链路验证 | Phase 3 完整闭环 | ⏳ 进行中 (~40%) | 见下方的 [Step 7 Windows 部署进度] |
 | main.py 集成 (Step 5) | — | ✅ 已完成 | `--test-tts` / `--test-tts-no-play` / AIRI→TTS 回调 |
-| Windows 网络: github.com:443 超时 | git fetch / submodule | 🟡 已规避 | 使用 v2rayN HTTP 代理 (`git config --global http.proxy http://127.0.0.1:10809`) |
 | Python 3.13 兼容: pkg_resources 缺失 | grpcio / grpcio-tools 编译 | ✅ 已修复 | 放宽版本 pin `==1.57.0` → `>=1.57.0`，改用预编译 wheel |
 | Python 3.13 兼容: numpy 1.26.4 无 wheel | numpy 从源码编译失败 | ✅ 已修复 | 放宽版本 pin `==1.26.4` → `>=1.26.4`，用已装的 numpy 2.3.2 |
 | Windows 缺少 C++ Build Tools | 依赖编译 | 🟢 已规避 | 放弃源码编译，改用有预编译 cp313 wheel 的新版本 |
