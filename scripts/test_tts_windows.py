@@ -10,7 +10,6 @@ Usage:
 
 Modes:
     check       Check environment (Python, CUDA, deps) — default
-    download    Download CosyVoice 2 model
     synthesize  Test text-to-speech synthesis (saves WAV file)
     play        Test synthesis + playback through speakers
     all         Run all checks sequentially
@@ -45,7 +44,33 @@ def print_header(title: str) -> None:
 def print_result(name: str, status: bool, detail: str = "") -> None:
     """Print a check result."""
     icon = "✅" if status else "❌"
-    print(f"  {icon} {name}: {detail}" if detail else f"  {icon} {name}")
+    if detail:
+        print(f"  {icon} {name}: {detail}")
+    else:
+        print(f"  {icon} {name}")
+
+
+def _check_import(module_name: str, pip_name: str | None = None,
+                  import_as: str | None = None) -> tuple[bool, str]:
+    """Check if a Python module is importable.
+
+    Args:
+        module_name: Module name to import.
+        pip_name: Name used in pip install (defaults to module_name).
+        import_as: Import with this name if different from module_name.
+
+    Returns:
+        Tuple of (importable, version_or_error).
+    """
+    pip_name = pip_name or module_name
+    try:
+        mod = __import__(import_as or module_name)
+        ver = getattr(mod, "__version__", str(getattr(mod, "version", "installed")))
+        return True, ver
+    except ImportError:
+        return False, f"Not installed. Run: pip install {pip_name}"
+    except Exception as e:
+        return False, str(e)
 
 
 async def check_environment() -> dict:
@@ -56,14 +81,44 @@ async def check_environment() -> dict:
     """
     print_header("Step 7.1: Environment Check")
 
-    info: dict = {"python": {}, "cuda": {}, "audio": {}, "tts": {}}
+    info: dict = {
+        "python": {},
+        "cuda": {},
+        "audio": {},
+        "tts": {},
+        "project": {},
+        "all_ok": True,
+    }
 
     # ── Python ────────────────────────────────────────────────────
     py_ver = sys.version
     info["python"]["version"] = py_ver
     print_result("Python", True, py_ver.split()[0])
 
+    # ── Core Project Dependencies ─────────────────────────────────
+    # These are needed BEFORE any src/ import can work
+    print_header("Project Dependencies")
+    core_deps = [
+        ("loguru", "loguru"),
+        ("numpy", "numpy"),
+        ("websockets", "websockets"),
+        ("pyyaml", "pyyaml"),
+        ("onnxruntime", "onnxruntime"),
+    ]
+    all_core_ok = True
+    for mod_name, pip_name in core_deps:
+        ok, detail = _check_import(mod_name, pip_name)
+        print_result(mod_name.capitalize(), ok, detail)
+        info["project"][mod_name] = ok
+        if not ok:
+            all_core_ok = False
+
+    info["project"]["core_ok"] = all_core_ok
+    if not all_core_ok:
+        info["all_ok"] = False
+
     # ── PyTorch / CUDA ────────────────────────────────────────────
+    print_header("PyTorch / CUDA")
     try:
         import torch
         info["cuda"]["torch_version"] = torch.__version__
@@ -80,12 +135,17 @@ async def check_environment() -> dict:
             print_result("CUDA", True, f"{cuda_ver} | {gpu_name} (x{gpu_count})")
         else:
             print_result("CUDA", False, "CPU mode (CUDA not available)")
+            info["all_ok"] = False
     except ImportError:
         print_result("PyTorch", False, "Not installed — needed for CosyVoice 2")
+        info["cuda"]["cuda_available"] = False
+        info["all_ok"] = False
     except Exception as e:
         print_result("PyTorch check", False, str(e))
+        info["all_ok"] = False
 
     # ── Audio Devices ─────────────────────────────────────────────
+    print_header("Audio Devices")
     try:
         import sounddevice as sd
         devices = sd.query_devices()
@@ -99,61 +159,51 @@ async def check_environment() -> dict:
         info["audio"]["input_devices"] = len(input_devices)
         info["audio"]["default_output"] = default_out
 
-        print_result("Output Devices", True,
-                     f"{len(output_devices)} found (default: {default_out})")
-        print_result("Input Devices", True,
-                     f"{len(input_devices)} found (default: {default_in})")
+        print_result("sounddevice", True,
+                     f"{len(output_devices)} outputs, {len(input_devices)} inputs")
+        print_result("Default Output", True,
+                     f"{output_devices[default_out]['name']}"
+                     if default_out >= 0 and output_devices else "None")
 
         # Show output devices
         for i, dev in enumerate(output_devices):
-            name = dev["name"]
-            channels = dev["max_output_channels"]
+            ch = dev["max_output_channels"]
             rate = dev["default_samplerate"]
-            marker = " ← DEFAULT" if dev["name"] == output_devices[default_out]["name"] and \
-                output_devices.index(dev) == default_out else ""
-            print(f"       [{i}] {name} ({channels} ch, {rate:.0f} Hz){marker}")
+            marker = " ← DEFAULT" if (
+                default_out >= 0 and i == default_out
+            ) else ""
+            print(f"       [{i}] {dev['name']} ({ch} ch, {rate:.0f} Hz){marker}")
     except ImportError:
-        print_result("sounddevice", False, "Not installed")
+        print_result("sounddevice", False, "Not installed. Run: pip install sounddevice")
+        info["all_ok"] = False
     except Exception as e:
         print_result("Audio devices", False, str(e))
 
-    # ── TTS Dependencies ──────────────────────────────────────────
-    try:
-        # Lazy import test — cosyvoice package
-        from cosyvoice.cli.cosyvoice import CosyVoice  # noqa: F401
-        print_result("CosyVoice 2", True, "Package installed and importable")
-        info["tts"]["cosyvoice"] = True
-    except ImportError:
-        print_result("CosyVoice 2", False,
-                     "Not installed. Run: pip install cosyvoice")
-        info["tts"]["cosyvoice"] = False
-    except Exception as e:
-        print_result("CosyVoice 2", False, str(e))
-        info["tts"]["cosyvoice"] = False
-
-    try:
-        import edge_tts  # noqa: F401
-        print_result("Edge-TTS", True, "Package installed")
-        info["tts"]["edge_tts"] = True
-    except ImportError:
-        print_result("Edge-TTS", False,
-                     "Not installed. Run: pip install edge-tts")
-        info["tts"]["edge_tts"] = False
-
-    # ── scipy for WAV writing ─────────────────────────────────────
-    try:
-        import scipy  # noqa: F401
-        from scipy.io import wavfile  # noqa: F401
-        print_result("scipy", True, scipy.__version__)
-    except ImportError:
-        print_result("scipy", False, "Not installed")
+    # ── TTS & Synthesis Dependencies ──────────────────────────────
+    print_header("TTS & Synthesis Dependencies")
+    synth_deps = [
+        ("scipy", "scipy"),
+        ("cosyvoice", "cosyvoice"),
+        ("edge_tts", "edge-tts"),
+    ]
+    for mod_name, pip_name in synth_deps:
+        ok, detail = _check_import(mod_name, pip_name)
+        print_result(mod_name.capitalize(), ok, detail)
+        info["tts"][mod_name] = ok
+        if mod_name in ("cosyvoice", "scipy") and not ok:
+            info["all_ok"] = False
 
     return info
 
 
+# ── Test: Synthesis (without playback, save WAV) ──────────────
+
 async def test_synthesize(text: str | None = None,
                           output_dir: str = "output") -> bool:
     """Test TTS synthesis with CosyVoice 2 engine.
+
+    All project imports are wrapped in try/except to handle
+    missing dependencies gracefully.
 
     Args:
         text: Text to synthesise (default: preset test phrases).
@@ -173,35 +223,55 @@ async def test_synthesize(text: str | None = None,
         text or "Welcome to the AIRI Voice Module, Text-to-Speech is ready.",
     ]
 
-    from src.config import TTSConfig
-    from src.tts import CosyVoiceTTS, TTSResult
+    # Lazy imports — may fail if loguru / cosyvoice not installed
+    try:
+        from src.config import TTSConfig
+        from src.tts import CosyVoiceTTS, TTSResult
+    except ImportError as e:
+        print_result("Project Import", False,
+                     f"Cannot import TTS module: {e}\n"
+                     "       Run check mode first to see what's missing.")
+        return False
 
     cfg = TTSConfig(
         engine="cosyvoice",
         model_size="base",
-        device="cuda",  # Try CUDA first, fallback to CPU
+        device="cuda",
         sample_rate=24000,
         voice_id="default",
         speed=1.0,
     )
 
-    # Try CUDA, fallback to CPU
-    tts = CosyVoiceTTS(
-        model_size=cfg.model_size,
-        device=cfg.device,
-        model_dir=cfg.model_dir,
-        sample_rate=cfg.sample_rate,
-        default_voice=cfg.voice_id,
-        default_speed=cfg.speed,
-    )
-
     try:
-        # Lazy load model
-        print("  Loading CosyVoice 2 model...")
-        load_start = time.monotonic()
-        await tts.load_model()
-        load_time = time.monotonic() - load_start
-        print_result("Model Load", True, f"{load_time:.1f}s")
+        tts = CosyVoiceTTS(
+            model_size=cfg.model_size,
+            device=cfg.device,
+            model_dir=cfg.model_dir,
+            sample_rate=cfg.sample_rate,
+            default_voice=cfg.voice_id,
+            default_speed=cfg.speed,
+        )
+
+        # May need CPU fallback if CUDA unavailable
+        try:
+            await tts.load_model()
+        except Exception:
+            if cfg.device == "cuda":
+                print("  ⚠️  CUDA model load failed, retrying on CPU...")
+                cfg.device = "cpu"
+                tts = CosyVoiceTTS(
+                    model_size=cfg.model_size,
+                    device=cfg.device,
+                    model_dir=cfg.model_dir,
+                    sample_rate=cfg.sample_rate,
+                    default_voice=cfg.voice_id,
+                    default_speed=cfg.speed,
+                )
+                await tts.load_model()
+            else:
+                raise
+
+        print_result("Model Load", True, f"device={cfg.device}")
 
         # Synthesize each test text
         all_passed = True
@@ -220,22 +290,24 @@ async def test_synthesize(text: str | None = None,
                 rtf = result.synthesis_time / duration if duration > 0 else 0
 
                 wav_path = output_path / f"tts_windows_test_{i + 1}.wav"
-                from scipy.io import wavfile
-                wavfile.write(
-                    str(wav_path),
-                    result.sample_rate,
-                    (result.audio * 32767).astype("int16"),
-                )
+                try:
+                    from scipy.io import wavfile
+                    wavfile.write(
+                        str(wav_path),
+                        result.sample_rate,
+                        (result.audio * 32767).astype("int16"),
+                    )
+                    saved_msg = f" | Saved: {wav_path}"
+                except ImportError:
+                    saved_msg = " | (scipy not installed, WAV not saved)"
 
                 print_result("Synthesis", True,
                              f"{duration:.2f}s audio in {synth_time:.2f}s "
-                             f"(RTF={rtf:.2f})")
-                print(f"       Saved: {wav_path}")
+                             f"(RTF={rtf:.2f}){saved_msg}")
 
-                # Check RTF target
                 if rtf > 0.3:
                     print(f"       ⚠️  RTF {rtf:.2f} > target 0.3 — "
-                          f"consider int8 quantization")
+                          f"consider int8 quantization or CUDA")
             else:
                 print_result("Synthesis", False, "Empty audio output")
                 all_passed = False
@@ -270,7 +342,7 @@ async def test_synthesize(text: str | None = None,
     except ImportError as e:
         print_result("CosyVoice 2", False,
                      f"Import error: {e}\n"
-                     "       Install: pip install cosyvoice")
+                     "       Install with: pip install cosyvoice")
         return False
     except Exception as e:
         print_result("Synthesis Test", False, str(e))
@@ -279,8 +351,13 @@ async def test_synthesize(text: str | None = None,
         await tts.cleanup()
 
 
+# ── Test: Synthesis + Playback (speaker output) ───────────────
+
 async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语音合成与播放测试。") -> bool:
     """Test TTS synthesis + playback through speakers.
+
+    All project imports are wrapped in try/except to handle
+    missing dependencies gracefully.
 
     Args:
         text: Text to speak.
@@ -290,9 +367,16 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
     """
     print_header("Step 7.3: TTS Playback Test (Speaker Output)")
 
-    from src.config import TTSConfig
-    from src.tts import CosyVoiceTTS, TTSManager
-    from src.audio.playback import AudioPlayback
+    # Lazy imports — may fail if loguru / cosyvoice / sounddevice not installed
+    try:
+        from src.config import TTSConfig
+        from src.tts import CosyVoiceTTS, TTSManager
+        from src.audio.playback import AudioPlayback
+    except ImportError as e:
+        print_result("Project Import", False,
+                     f"Cannot import playback modules: {e}\n"
+                     "       Install: pip install sounddevice loguru")
+        return False
 
     cfg = TTSConfig(
         engine="cosyvoice",
@@ -303,22 +387,22 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
         sample_rate=24000,
     )
 
-    playback = AudioPlayback(
-        device_id=None,  # Default output
-        sample_rate=cfg.sample_rate,
-    )
-
-    tts = CosyVoiceTTS(
-        model_size=cfg.model_size,
-        device=cfg.device,
-        sample_rate=cfg.sample_rate,
-        default_voice=cfg.voice_id,
-        default_speed=cfg.speed,
-    )
-
-    tts_mgr = TTSManager(engine=tts, playback=playback)
-
     try:
+        playback = AudioPlayback(
+            device_id=None,
+            sample_rate=cfg.sample_rate,
+        )
+
+        tts = CosyVoiceTTS(
+            model_size=cfg.model_size,
+            device=cfg.device,
+            sample_rate=cfg.sample_rate,
+            default_voice=cfg.voice_id,
+            default_speed=cfg.speed,
+        )
+
+        tts_mgr = TTSManager(engine=tts, playback=playback)
+
         await playback.start()
         print_result("Playback Started", True, "Audio output stream ready")
 
@@ -328,7 +412,7 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
         result = await tts_mgr.say(text)
         print_result("Playback", result, "" if result else "Failed")
 
-        # Test stop/pause/resume
+        # Test pause/resume
         print(f"\n  Testing controls...")
         await tts_mgr.pause()
         print_result("Pause", True, "Playback paused")
@@ -342,9 +426,17 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
         print_result("Playback Test", False, str(e))
         return False
     finally:
-        await tts_mgr.cleanup()
-        await playback.stop()
+        try:
+            await tts_mgr.cleanup()
+        except Exception:
+            pass
+        try:
+            await playback.stop()
+        except Exception:
+            pass
 
+
+# ── Main entry point ──────────────────────────────────────────
 
 async def main() -> int:
     """Run Windows TTS verification."""
@@ -380,18 +472,40 @@ async def main() -> int:
 
     all_passed = True
 
-    if args.mode in ("check", "all"):
-        env_info = await check_environment()
-        cuda_ok = env_info.get("cuda", {}).get("cuda_available", False)
-        cosy_ok = env_info.get("tts", {}).get("cosyvoice", False)
-        if args.mode == "check":
-            all_passed = cuda_ok and cosy_ok
+    # ── Check mode (always runs first) ────────────────────────────
+    env_info = await check_environment()
+    cuda_ok = env_info.get("cuda", {}).get("cuda_available", False)
+    cosy_ok = env_info.get("tts", {}).get("cosyvoice", False)
+    core_ok = env_info.get("project", {}).get("core_ok", False)
 
-    if args.mode in ("synthesize", "all"):
+    # ── Pre-check before running heavier tests ────────────────────
+    if args.mode in ("synthesize", "play", "all"):
+        missing = []
+        if not core_ok:
+            missing.append("core project dependencies (loguru, etc.)")
+        if not cosy_ok:
+            missing.append("CosyVoice 2 (pip install cosyvoice)")
+
+        if missing:
+            print()
+            print("─" * 60)
+            print("  ⚠️  Cannot continue: missing dependencies")
+            for m in missing:
+                print(f"     • {m}")
+            print()
+            print("  Run 'pip install' commands above, then retry.")
+            print("─" * 60)
+            all_passed = False
+
+    # ── Run selected modes ────────────────────────────────────────
+    if args.mode == "check":
+        all_passed = cuda_ok and cosy_ok and core_ok
+
+    elif args.mode == "synthesize" and all_passed:
         ok = await test_synthesize(args.text, args.output_dir)
         all_passed = all_passed and ok
 
-    if args.mode in ("play", "all"):
+    elif args.mode == "play" and all_passed:
         if args.mode == "all":
             print("\n" + "─" * 60)
         ok = await test_playback(
@@ -399,7 +513,18 @@ async def main() -> int:
         )
         all_passed = all_passed and ok
 
-    # Summary
+    elif args.mode == "all" and all_passed:
+        ok = await test_synthesize(args.text, args.output_dir)
+        all_passed = all_passed and ok
+
+        if all_passed:
+            print("\n" + "─" * 60)
+            ok = await test_playback(
+                args.text or "你好，欢迎使用AIRI语音模块，所有测试已完成。",
+            )
+            all_passed = all_passed and ok
+
+    # ── Summary ───────────────────────────────────────────────────
     print()
     print("=" * 60)
     print(f"  {'✅ All tests passed!' if all_passed else '❌ Some tests failed.'}")
