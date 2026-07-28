@@ -477,6 +477,197 @@ from cosyvoice.cli.cosyvoice import AutoModel
 
 ---
 
+## 问题 13: 跨项目 venv 切换导致环境混乱
+
+### 现象
+
+两个项目（`CosyVoice` / `airi-voice-module`）各有自己的 venv，但需要互相引用依赖：
+
+| 环境 | venv 路径 | 包含 |
+|:-----|:----------|:-----|
+| CosyVoice | `CosyVoice\venv` | torch, cosyvoice, onnxruntime, scipy 等 |
+| airi-voice-module | `airi-voice-module\.venv` | torch **2.6.0+cu124** (CUDA 版), sounddevice, loguru 等 |
+
+用户频繁 `deactivate` / 切换 venv，导致：
+1. 测试脚本跑在错误的 Python 环境中
+2. 即使包已安装，测试仍报 `ModuleNotFoundError`
+
+### 根因分析
+
+- `airi-voice-module\.venv` 使用 `--system-site-packages` 创建，可访问系统全局安装的 CUDA PyTorch
+- `CosyVoice\venv` 是独立创建，不共享系统包
+- 用户需要从 `airi-voice-module` 目录运行测试脚本，但需要用 `CosyVoice` 的 venv
+
+### 解决方案
+
+统一使用 `CosyVoice\venv`（含 torch、cosyvoice 等核心依赖），在该 venv 中补装 `airi-voice-module` 所需的轻量包：
+
+```powershell
+# 激活 CosyVoice venv（只需一次）
+D:\DevProject\PythonProject\CosyVoice\venv\Scripts\Activate.ps1
+
+# 切到 airi-voice-module 目录运行测试
+cd D:\DevProject\PythonProject\airi-voice-module
+
+# 补装缺失的包（一次性）
+pip install sounddevice loguru websockets pyyaml edge-tts
+```
+
+### 注意事项
+
+- venv 激活的只是 Python 解释器环境，与当前工作目录无关
+- `cd` 到不同项目目录只是为了 `sys.path` 能找到正确的源码
+
+### 状态
+
+✅ 已解决（统一使用 CosyVoice\venv）
+
+---
+
+## 问题 14: 测试脚本 pyyaml import 名称错误
+
+### 现象
+
+```powershell
+python scripts/test_tts_windows.py --mode check
+# → ❌ Pyyaml: Not installed. Run: pip install pyyaml
+```
+
+但实际 `pyyaml` 已安装：
+
+```powershell
+pip list | findstr pyyaml
+# pyyaml  6.0.3
+```
+
+### 根因分析
+
+测试脚本 `scripts/test_tts_windows.py` 第 104 行：
+
+```python
+# 问题代码 — import 名用了 pip 包名而非 Python 模块名
+("pyyaml", "pyyaml"),  # _check_import 尝试 import pyyaml
+```
+
+PyYAML 的 **pip 包名**是 `pyyaml`，但 **Python 模块名**是 `yaml`。`_check_import("pyyaml")` → `import pyyaml` → `ModuleNotFoundError`。
+
+### 影响
+
+此错误导致 `core_ok = False`，进而阻止 `--mode synthesize` 和 `--mode play` 执行：
+
+```python
+if args.mode in ("synthesize", "play", "all"):
+    if not core_ok:
+        missing.append("core project dependencies (loguru, etc.)")
+        # ↑ 误报为 "core project dependencies"，实际只是 pyyaml 名称问题
+```
+
+### 修复
+
+```diff
+- ("pyyaml", "pyyaml"),
++ ("yaml", "pyyaml"),   # import yaml, install via pip install pyyaml
+```
+
+### 状态
+
+✅ 已修复 (commit `6ac505e`, 2026-07-28)
+
+---
+
+## 问题 15: CosyVoice 模块无法在 venv 中全局导入
+
+### 现象
+
+```powershell
+cd D:\DevProject\PythonProject\CosyVoice
+python -c "from cosyvoice.cli.cosyvoice import AutoModel"  # ✅ 成功（当前目录有 cosyvoice/）
+
+cd D:\DevProject\PythonProject\airi-voice-module
+python -c "import cosyvoice"  # ❌ ModuleNotFoundError（不在 CosyVoice 目录）
+```
+
+### 根因分析
+
+- CosyVoice 仓库无 `setup.py` / `pyproject.toml`，不能 `pip install -e .`
+- 源码在 `CosyVoice/cosyvoice/` 目录下，只有从 CosyVoice 根目录运行 Python 时，`cosyvoice/` 目录才能被 `sys.path` 发现
+- 从其他目录运行 Python 时，`sys.path` 不包含 CosyVoice 的路径
+
+### 解决方案
+
+在 CosyVoice venv 的 site-packages 中创建 `.pth` 文件（路径指针）：
+
+```powershell
+# 方案 A: .pth 文件（推荐，持久化）
+Set-Content -Path CosyVoice\venv\Lib\site-packages\cosyvoice.pth `
+    -Value "D:\DevProject\PythonProject\CosyVoice" `
+    -Encoding ASCII
+
+# 方案 B: PYTHONPATH 环境变量（临时，仅当前窗口有效）
+$env:PYTHONPATH = "D:\DevProject\PythonProject\CosyVoice"
+```
+
+**注意**: PowerShell 的 `echo >` 默认编码为 UTF-16，Python 的 `site.py` 读取 `.pth` 文件时会崩溃。必须用 `Set-Content -Encoding ASCII`。
+
+### 验证
+
+```powershell
+python -c "import cosyvoice; print('✅ cosyvoice 可导入')"
+```
+
+### 状态
+
+✅ 已修复（cosyvoice.pth 文件，ASCII 编码）
+
+---
+
+## 问题 16: Python 3.13 + PyTorch CUDA wheel 不兼容
+
+### 现象
+
+```powershell
+nvidia-smi  # CUDA Version: 13.2, GPU: RTX 3070 Ti
+
+python -c "import torch; print(torch.__version__)"
+# 2.13.0+cpu  ← CPU 版！
+```
+
+但同一机器的 `airi-voice-module\.venv` 中曾有正常的 CUDA 版：
+
+```powershell
+python -c "import torch; print(torch.cuda.is_available())"
+# True  ← CUDA 正常
+# PyTorch: 2.6.0+cu124
+```
+
+### 根因分析
+
+| 因素 | 说明 |
+|:----|:------|
+| 直接原因 | `requirements.txt` 写 `torch>=2.3.1` 未指定 CUDA 变体 |
+| 版本冲突 | PyTorch 最新版 2.13.0 无 Python 3.13 的 CUDA wheel |
+| pip 降级 | pip 找不到 `cp313` CUDA wheel → 自动降级到 CPU-only 版本 |
+| 索引配置 | `https://download.pytorch.org/whl/cu121` 索引可能无 Python 3.13 + CUDA 12.1 的组合 |
+
+### 解决方案
+
+```powershell
+# 卸载 CPU 版
+pip uninstall torch torchaudio -y
+
+# 安装已知兼容的版本（Phase 2 验证过可用）
+pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+
+# 验证
+python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+```
+
+### 状态
+
+⏳ 待执行（下一步操作）
+
+---
+
 ## 待解决问题汇总
 
 | # | 问题 | 优先级 | 状态 | 解决方案 |
@@ -491,49 +682,52 @@ from cosyvoice.cli.cosyvoice import AutoModel
 | 8 | pip 缓存权限错误 (MarkupSafe) | 🟡 中 | ✅ 已修复 | pip cache purge |
 | 9 | protobuf 冲突导致 grpcio-tools 回溯 | 🔴 高 | ✅ 已修复 | 删除 protobuf pin + 预装新版 |
 | 10 | pyworld 编译失败 (无 MSVC) | 🟢 低 | ⚠️ 已跳过 | 推理不需要，跳过 |
-| 11 | --no-deps 传递依赖缺失 (20+ 包) | 🔴 高 | ⏳ 待执行 | 重跑无 --no-deps |
+| 11 | --no-deps 传递依赖缺失 (20+ 包) | 🔴 高 | ✅ 已修复 | 重跑无 --no-deps（2026-07-28） |
 | 12 | CosyVoice 无 setup.py | 🟢 低 | ✅ 已确认 | 无需 pip install -e . |
-| 13 | Windows 全链路验证 (Step 7) | 🔴 高 | ⏳ 进行中 (~85%) | 补传递依赖 → 模型下载 → 测试 |
+| 13 | 跨项目 venv 切换混乱 | 🟡 中 | ✅ 已解决 | 统一用 CosyVoice\venv |
+| 14 | 测试脚本 pyyaml import 名称错误 | 🟡 中 | ✅ 已修复 | import yaml 而非 pyyaml (commit 6ac505e) |
+| 15 | CosyVoice 模块无法全局导入 | 🟡 中 | ✅ 已修复 | cosyvoice.pth 文件 (ASCII) |
+| 16 | Python 3.13 + PyTorch CUDA wheel 不兼容 | 🔴 高 | ⏳ 待执行 | pip install torch==2.6.0 --index-url cu124 |
 
 ---
 
 ## 验证回归清单
 
+### 安装验证
 ```powershell
-# 1. 基础依赖检查
-pip install loguru numpy websockets pyyaml onnxruntime scipy sounddevice
+# 1. 激活 CosyVoice venv（推荐用这个统一环境）
+D:\DevProject\PythonProject\CosyVoice\venv\Scripts\Activate.ps1
 
-# 2. 克隆 CosyVoice 2
-cd D:\DevProject\PythonProject
-git clone --recursive https://github.com/QwenAudio/CosyVoice.git
-cd CosyVoice
-git submodule update --init --recursive
+# 2. 基础依赖检查（CosyVoice venv 中执行一次）
+pip install sounddevice loguru websockets pyyaml edge-tts
 
-# 3. 修改 requirements.txt 放宽 grpcio/grpcio-tools/numpy 版本 pin
-notepad requirements.txt
-# grpcio==1.57.0 → grpcio>=1.57.0
-# grpcio-tools==1.57.0 → grpcio-tools>=1.57.0
-# numpy==1.26.4 → numpy>=1.26.4
+# 3. (可选) 安装 CUDA 版 PyTorch
+pip uninstall torch torchaudio -y
+pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
-# 4. 安装依赖
-pip install -r requirements.txt
+# 4. 验证 CUDA
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0)}')"
+```
 
-# 5. 安装 CosyVoice 本体
-pip install -e .
-
-# 6. 验证安装
-python -c "from cosyvoice.cli.cosyvoice import CosyVoice; print('OK')"
-
-# 7. 下载模型
-python -c "from modelscope import snapshot_download; snapshot_download('iic/CosyVoice2-0.5B', local_dir='pretrained_models/CosyVoice-2-0.5B')"
-
-# 8. 环境检查
+### 功能验证
+```powershell
+# 5. 环境检查
 cd D:\DevProject\PythonProject\airi-voice-module
+git pull  # 确保测试脚本为最新版 (pyyaml 修复)
 python scripts\test_tts_windows.py --mode check
 
-# 9. 合成验证 (无播放)
+# 6. 合成验证 (无播放)
 python scripts\test_tts_windows.py --mode synthesize
 
-# 10. 全链路验证 (含播放)
+# 7. 全链路验证 (含播放)
 python scripts\test_tts_windows.py --mode all
 ```
+
+---
+
+## 版本历史
+
+| 日期 | 版本 | 变更 |
+|:----|:----:|:------|
+| 2026-07-27 | v1 | 初始版本，记录问题 1-12 |
+| 2026-07-28 | v2 | 新增问题 13-16，更新汇总表与回归清单 |
