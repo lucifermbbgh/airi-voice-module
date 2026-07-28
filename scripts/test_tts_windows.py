@@ -102,7 +102,7 @@ async def check_environment() -> dict:
         ("loguru", "loguru"),
         ("numpy", "numpy"),
         ("websockets", "websockets"),
-        ("pyyaml", "pyyaml"),
+        ("yaml", "pyyaml"),
         ("onnxruntime", "onnxruntime"),
     ]
     all_core_ok = True
