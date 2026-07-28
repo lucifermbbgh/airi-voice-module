@@ -1,9 +1,9 @@
 # AIRI Voice Module — Phase 3 TTS 测试报告
 
-> **日期**: 2026-07-27 (修订 v1.1: 新增 main.py Step 5 集成)
+> **日期**: 2026-07-28 (修订 v1.2: 更新 Step 7 Windows 部署进展至 ~85%)
 > **目标平台**: Windows 11 (Python 3.13.2) + NVIDIA GeForce RTX 3070 Ti
 > **项目路径**: `D:\DevProject\PythonProject\airi-voice-module`
-> **Git Commit**: (含 Step 5 main.py TTS 集成)
+> **Git Commit**: (含 Step 7 Windows 依赖修复)
 > **引擎**: CosyVoice 2 (默认) / Edge-TTS (备用)
 > **加速**: ✅ CUDA 12.4 + PyTorch 2.6.0+cu124 (RTX 3070 Ti)
 
@@ -184,7 +184,7 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 | main.py 编译检查 | ✅ 通过 |
 | `--test-tts` argparse 解析 | ✅ 通过 |
 | `--test-tts-no-play` argparse 解析 | ✅ 通过 |
-| Windows 验证 (Step 7) | ⏳ 进行中 (~40%) |
+| Windows 验证 (Step 7) | ⏳ 进行中 (~85%) |
 
 ---
 
@@ -198,6 +198,9 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 | main.py 集成 (Step 5) | — | ✅ 已完成 | `--test-tts` / `--test-tts-no-play` / AIRI→TTS 回调 |
 | Python 3.13 兼容: pkg_resources 缺失 | grpcio / grpcio-tools 编译 | ✅ 已修复 | 放宽版本 pin `==1.57.0` → `>=1.57.0`，改用预编译 wheel |
 | Python 3.13 兼容: numpy 1.26.4 无 wheel | numpy 从源码编译失败 | ✅ 已修复 | 放宽版本 pin `==1.26.4` → `>=1.26.4`，用已装的 numpy 2.3.2 |
+| Python 3.13 兼容: pydantic-core 2.18.1 无 wheel | pydantic-core 编译失败（需 Rust） | ✅ 已修复 | 升级 `pydantic==2.7.0` → `pydantic>=2.10.0` (2.13.4) |
+| Python 3.13 兼容: pyworld 0.3.4 无 wheel | pyworld 编译失败（需 MSVC） | ⚠️ 已跳过 | 推理不需要 pyworld，仅训练需要 |
+| protobuf==4.25 与 grpcio-tools==1.83.0 冲突 | pip 回溯 grpcio-tools 至 1.62 源码构建失败 | ✅ 已修复 | 删除 protobuf pin，预装 grpcio-tools 1.83.0 |
 | Windows 缺少 C++ Build Tools | 依赖编译 | 🟢 已规避 | 放弃源码编译，改用有预编译 cp313 wheel 的新版本 |
 
 ---
@@ -234,15 +237,23 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 ### 下一步
 
 1. ✅ **main.py 集成 (Step 5)** — 新增 `--test-tts` / `--test-tts-no-play` 模式
-2. ⏳ **Windows 全模式运行 (Step 7)** — 进行中:
+2. ⏳ **Windows 全模式运行 (Step 7)** — 进行中 (~85%):
    - ✅ 基础依赖检查 (loguru/websockets/scipy/onnxruntime/sounddevice)
    - ✅ CosyVoice 仓库克隆 (QwenAudio/CosyVoice)
    - ✅ Matcha-TTS 子模块拉取
    - ✅ grpcio 安装 (1.83.0 预编译 wheel)
    - ✅ grpcio-tools 安装 (1.83.0 预编译 wheel)
    - ✅ numpy 版本放宽 (使用已有 2.3.2)
-   - ⏳ `pip install -r requirements.txt` 剩余包
-   - ⏳ `pip install -e .` 安装 CosyVoice
+   - ✅ pydantic 升级 (2.13.4, cp313 wheel)
+   - ✅ protobuf 版本冲突解决
+   - ✅ torch 2.13.0 + torchaudio 2.11.0 (cp313 wheel)
+   - ✅ transformers 4.51.3 + diffusers 0.29.0 + gradio 5.4.0
+   - ✅ onnxruntime 1.28.0 + onnx 1.22.0
+   - ✅ modelscope 1.20.0 + soundfile 0.12.1 + librosa 0.10.2
+   - ✅ openai-whisper 20250625 (构建成功)
+   - ⚠️ pyworld 跳过（推理不需要）
+   - ⏳ 安装 20+ 缺失传递依赖（重跑无 --no-deps）
+   - ⏳ 验证 `from cosyvoice.cli.cosyvoice import AutoModel`
    - ⏳ 模型下载 (CosyVoice-2-0.5B ~1.5GB)
    - ⏳ `scripts/test_tts_windows.py --mode check`
    - ⏳ `scripts/test_tts_windows.py --mode synthesize`
