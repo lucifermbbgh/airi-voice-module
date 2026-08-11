@@ -396,9 +396,16 @@ async def _run_full(
     stt: FasterWhisperSTT,
     post_processor: TextPostProcessor | None = None,
 ) -> None:
-    """Run full voice pipeline with STT, AIRI, and TTS.
+    """Run full voice pipeline with STT, AIRI, TTS, and conversation context.
 
-    Full chain: VAD → STT → AIRI → TTS → AudioPlayback.
+    Full chain: VAD → STT → ConversationContext → AIRI → TTS → AudioPlayback.
+
+    Phase 4 improvements over the original skeleton:
+    - ConversationContext: per-turn tracking, multi-turn history
+    - Error recovery: STT exceptions caught and logged
+    - AIRI disconnect buffering: unsent STT results queued
+    - output:gen-ai:chat:complete: marks turns complete
+    - Graceful TTS degradation: logs text when TTS unavailable
 
     Args:
         pipeline: Configured AudioPipeline instance.
@@ -406,8 +413,12 @@ async def _run_full(
         post_processor: Optional text post-processor.
     """
     from src.airi.websocket_client import AIRIClient
+    from src.airi.conversation import ConversationContext, TurnStatus
 
-    # Initialize AIRI client
+    # ── Phase 4: Conversation context ──────────────────────────
+    ctx = ConversationContext(history_limit=20)
+
+    # ── AIRI client ────────────────────────────────────────────
     airi = AIRIClient(
         host=pipeline.config.airi.host,
         port=pipeline.config.airi.port,
@@ -416,14 +427,32 @@ async def _run_full(
         max_attempts=pipeline.config.airi.max_reconnect_attempts,
     )
 
-    # Initialize AudioPlayback for TTS output
+    # ── Audio playback ─────────────────────────────────────────
     playback = AudioPlayback(
         device_id=pipeline.config.audio.output_device,
         sample_rate=pipeline.config.audio.output_sample_rate,
     )
 
-    # Initialize TTS Manager
+    # ── Phase 4: Buffered send queue (for AIRI disconnect) ────
+    pending_sends: asyncio.Queue[dict] = asyncio.Queue(maxsize=32)
+
+    async def _flush_pending_sends() -> None:
+        """Drain buffered STT results when AIRI reconnects."""
+        while not pending_sends.empty():
+            try:
+                msg = pending_sends.get_nowait()
+                await airi.send(msg)
+                pending_sends.task_done()
+                logger.debug("Flushed buffered STT: \"{}\"", msg["data"]["text"][:60])
+            except asyncio.QueueEmpty:
+                break
+            except Exception as e:
+                logger.warning("Flush send error: {}", e)
+                break
+
+    # ── TTS initialization ─────────────────────────────────────
     tts_mgr = None
+    tts_available = False
     try:
         tts_cfg = pipeline.config.tts
         if tts_cfg.engine == "cosyvoice":
@@ -441,47 +470,75 @@ async def _run_full(
             tts_engine = None
 
         if tts_engine is not None:
-            tts_mgr = TTSManager(
-                engine=tts_engine,
-                playback=playback,
-            )
+            tts_mgr = TTSManager(engine=tts_engine, playback=playback)
+            tts_available = True
             logger.info("TTS initialized: engine={}, voice={}, speed={}",
                         tts_cfg.engine, tts_cfg.voice_id, tts_cfg.speed)
-        else:
-            logger.info("TTS disabled: no engine available")
     except ImportError as e:
         logger.warning("TTS engine import error (TTS disabled): {}", e)
-        tts_mgr = None
     except Exception as e:
         logger.warning("TTS initialization error (TTS disabled): {}", e)
-        tts_mgr = None
 
-    # Track connection status
+    # ── AIRI → TTS handler ─────────────────────────────────────
+    async def _on_airi_message(data: dict) -> None:
+        """Handle AIRI streaming chat message → TTS playback + context.
+
+        Accumulates response chunks into the active conversation turn.
+        Falls back to text-only logging when TTS is unavailable.
+
+        Args:
+            data: Event data dict from AIRI.
+        """
+        text = (data.get("text") or data.get("message")
+                or data.get("content") or "")
+        if not text:
+            return
+
+        # Phase 4: Track in conversation context
+        turn = ctx.append_response(text)
+        if turn is not None:
+            logger.debug("Turn {} chunk: \"{}\"", turn.turn_id, text[:60])
+
+        # Phase 4: Play via TTS (or log when unavailable)
+        if tts_available and tts_mgr is not None:
+            logger.debug("AIRI→TTS: \"{}\"", text[:80])
+            try:
+                await tts_mgr.say(text)
+            except Exception as e:
+                logger.error("TTS playback error: {}", e)
+        else:
+            # Graceful degradation: log the text
+            logger.info("AIRI reply (no TTS): \"{}\"", text[:120])
+
+    async def _on_airi_complete(data: dict) -> None:
+        """Handle AIRI chat complete → mark turn as done.
+
+        Args:
+            data: Event data dict from AIRI.
+        """
+        turn = ctx.complete_current_turn()
+        if turn is not None:
+            logger.info(
+                "Turn {} complete: {} chars, {:.1f}s",
+                turn.turn_id, len(turn.response_text), turn.duration,
+            )
+        print(f"   ✅ [AIRI complete]")
+
+    airi.on("output:gen-ai:chat:message", _on_airi_message)
+    airi.on("output:gen-ai:chat:complete", _on_airi_complete)
+    logger.info("AIRI event handlers registered")
+
+    # ── Speech → STT → AIRI callback ───────────────────────────
+    # Track connection status (nonlocal in closure)
     airi_connected = False
 
-    # ── AIRI → TTS handler ──────────────────────────────────────────
-    if tts_mgr is not None:
-        async def _on_airi_message(data: dict) -> None:
-            """Handle AIRI chat message → TTS playback.
-
-            Extracts text from AIRI's output:gen-ai:chat:message event
-            and feeds it to the TTS pipeline.
-
-            Args:
-                data: Event data dict from AIRI.
-            """
-            # Try common message formats
-            text = (data.get("text") or data.get("message")
-                    or data.get("content") or "")
-            if text:
-                logger.debug("AIRI→TTS: \"{}\"", text[:80])
-                await tts_mgr.say(text)
-
-        airi.on("output:gen-ai:chat:message", _on_airi_message)
-        logger.info("AIRI→TTS handler registered")
-
     async def on_speech(event) -> None:
-        """Speech event → STT → AIRI pipeline.
+        """Speech event → STT → ConversationContext → AIRI.
+
+        Phase 4 additions:
+        - STT exceptions are caught and logged (no silent crashes)
+        - Low-confidence results are tracked in context
+        - During AIRI disconnect, results are buffered in pending_sends queue
 
         Args:
             event: SpeechEvent from VAD.
@@ -490,80 +547,143 @@ async def _run_full(
 
         if event.type == SpeechEventType.SPEECH_START:
             print(f"\n🗣️  [SPEECH START]")
+            # Phase 4: Interrupt current TTS playback if user speaks (Phase 5 prep)
+            if tts_available and tts_mgr is not None:
+                try:
+                    await tts_mgr.stop()
+                except Exception:
+                    pass
+
         elif event.type == SpeechEventType.SPEECH_END:
-            print(f"🤫 [END] dur={event.duration:.2f}s",
-                  end="")
+            print(f"🤫 [END] dur={event.duration:.2f}s", end="")
 
-            if event.audio is not None and airi_connected:
+            if event.audio is None:
+                print()
+                return
+
+            # Phase 4: STT with error recovery
+            try:
                 result = await stt.transcribe(event.audio, event.sample_rate)
+            except Exception as e:
+                logger.error("STT transcription error: {}", e)
+                print(f" ❌ STT error: {e}")
+                return
 
-                if result.text and result.confidence >= pipeline.config.stt.min_confidence:
-                    # Apply post-processing
-                    output_text = result.text
-                    if post_processor:
-                        output_text = post_processor.process(
-                            result.text, confidence=result.confidence,
-                        )
-
-                    # Send to AIRI
-                    success = await airi.send_input_text_voice(
-                        text=output_text,
-                        language=result.language,
+            if result.text and result.confidence >= pipeline.config.stt.min_confidence:
+                # Apply post-processing
+                output_text = result.text
+                if post_processor:
+                    output_text = post_processor.process(
+                        result.text, confidence=result.confidence,
                     )
 
+                # Phase 4: Start conversation turn
+                turn = ctx.start_user_turn(
+                    text=output_text,
+                    confidence=result.confidence,
+                    language=result.language or "zh",
+                )
+
+                # Phase 4: Send to AIRI (or buffer if disconnected)
+                message = {
+                    "type": "input:text:voice",
+                    "data": {
+                        "text": output_text,
+                        "language": result.language or "zh",
+                        "turn_id": turn.turn_id,
+                    },
+                }
+
+                if airi_connected:
+                    success = await airi.send(message)
                     if success:
                         print(f" → \"{output_text}\" (conf={result.confidence:.2f})")
                         logger.info("STT→AIRI: \"{}\" (conf={:.2f})",
                                     output_text, result.confidence)
                     else:
                         print(f" ❌ AIRI send failed")
-                elif result.text:
-                    print(f" (low conf={result.confidence:.2f}, dropped)")
+                        # Phase 4: Buffer for retry
+                        await _safe_put_pending(message, output_text)
                 else:
-                    print(f" (silent)")
-            elif event.audio is not None:
-                print(f" (AIRI not connected)")
+                    print(f" ⏳ (AIRI not connected, buffered)")
+                    await _safe_put_pending(message, output_text)
+
+            elif result.text:
+                print(f" (low conf={result.confidence:.2f}, dropped)")
+                logger.debug("Low confidence STT dropped: \"{}\"", result.text[:60])
             else:
-                print()
+                print(f" (silent)")
+
+    async def _safe_put_pending(message: dict, text: str) -> None:
+        """Safely enqueue a message for retry on reconnect.
+
+        Args:
+            message: The message dict to buffer.
+            text: Display text for logging.
+        """
+        try:
+            pending_sends.put_nowait(message)
+            logger.debug("Buffered STT for retry: \"{}\"", text[:60])
+        except asyncio.QueueFull:
+            logger.warning("Pending send queue full, dropping: \"{}\"", text[:60])
 
     pipeline.on_speech_event(on_speech)
 
-    print("\n🎤 AIRI Voice Module - Full Mode (VAD → STT → AIRI)")
+    print("\n🎤 AIRI Voice Module - Full Mode (VAD → STT → AIRI → TTS)")
     print("=" * 60)
-    print(f"   AIRI: ws://{pipeline.config.airi.host}:{pipeline.config.airi.port}")
+    print(f"   AIRI:     ws://{pipeline.config.airi.host}:{pipeline.config.airi.port}")
+    print(f"   TTS:      {'✅ ' + pipeline.config.tts.engine if tts_available else '❌ disabled'}")
+    print(f"   Session:  {ctx.session_id}")
+    print("=" * 60)
 
     try:
         # Start audio playback
         await playback.start()
-        logger.info("AudioPlayback started for TTS output")
+        logger.info("AudioPlayback started")
 
         # Start AIRI client in background
         airi_task = asyncio.create_task(airi.run(), name="airi")
 
-        # Start pipeline
+        # Start pipeline (capture + VAD)
         await pipeline.start()
 
         # Wait for AIRI connection
-        for _ in range(10):  # Wait up to ~5s
+        for _ in range(10):
             if airi.is_connected:
                 airi_connected = True
                 print("   ✅ Connected to AIRI")
+                # Flush any buffered messages from previous sessions
+                await _flush_pending_sends()
                 break
             await asyncio.sleep(0.5)
 
-        # Keep running
+        if not airi_connected:
+            print("   ⚠️  AIRI not available — voice input will be buffered")
+
+        # ── Main event loop ────────────────────────────────────
         while pipeline.is_running:
+            # Phase 4: Connection state transitions
             if airi.is_connected and not airi_connected:
                 airi_connected = True
                 print("\n   🔄 AIRI reconnected")
+                await _flush_pending_sends()
             elif not airi.is_connected and airi_connected:
                 airi_connected = False
-                print("\n   🔌 AIRI disconnected, waiting...")
+                print("\n   🔌 AIRI disconnected, buffering...")
+
             await asyncio.sleep(0.5)
 
     except asyncio.CancelledError:
         pass
     finally:
+        # Phase 4: Log final conversation summary
+        summary = ctx.summary()
+        logger.info(
+            "Conversation ended: session={}, turns={}, duration={:.0f}s",
+            summary["session_id"], summary["total_turns"],
+            summary["duration_s"],
+        )
+
         await pipeline.stop()
         airi_task.cancel()
         try:
@@ -571,7 +691,6 @@ async def _run_full(
         except asyncio.CancelledError:
             pass
         await airi.stop()
-        # Cleanup TTS
         if tts_mgr is not None:
             await tts_mgr.cleanup()
         await playback.stop()
