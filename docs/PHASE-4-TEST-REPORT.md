@@ -176,6 +176,20 @@ python -c "import numpy, websockets, yaml, loguru, sounddevice; print('deps OK')
 
 ❌ 如果 `ModuleNotFoundError`，运行 `pip install -r requirements.txt`。
 
+> **常见坑：PyPI 下载超时（Windows + 代理环境）**
+>
+> 如果 `pip install` 报 `ReadTimeoutError` 或 `ConnectionResetError(10054)`，需要先设置代理（PowerShell 语法）：
+> ```powershell
+> $env:HTTP_PROXY="http://127.0.0.1:10809"
+> $env:HTTPS_PROXY="http://127.0.0.1:10809"
+> pip install -r requirements.txt
+> ```
+> 如果 10809 仍超时，换 10808 端口（xray mixed 协议）。或使用 `--proxy` 参数：
+> ```powershell
+> pip install -r requirements.txt --proxy http://127.0.0.1:10809
+> ```
+> 注意：PowerShell 用 `$env:VAR="value"`，不是 cmd 的 `set VAR=value`。
+
 ---
 
 ### 步骤 1：验证 Phase 4 新增模块
