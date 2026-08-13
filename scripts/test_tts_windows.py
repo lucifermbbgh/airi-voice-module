@@ -428,10 +428,10 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
 
         # Test pause/resume
         print(f"\n  Testing controls...")
-        await tts_mgr.pause()
+        tts_mgr.pause()
         print_result("Pause", True, "Playback paused")
         await asyncio.sleep(0.5)
-        await tts_mgr.resume()
+        tts_mgr.resume()
         print_result("Resume", True, "Playback resumed")
 
         return result
