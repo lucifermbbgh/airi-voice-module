@@ -178,7 +178,7 @@ class CosyVoiceTTS(TTSBase):
             return
 
         try:
-            from cosyvoice.cli.cosyvoice import CosyVoice
+            from cosyvoice.cli.cosyvoice import CosyVoice2
         except ImportError:
             raise ImportError(
                 "cosyvoice is not installed.\n"
@@ -205,7 +205,7 @@ class CosyVoiceTTS(TTSBase):
 
         load_start = time.monotonic()
         try:
-            self._model = CosyVoice(model_path)
+            self._model = CosyVoice2(model_path)
         except Exception as e:
             logger.error("Failed to load CosyVoice model: {}", e)
             raise RuntimeError(
@@ -313,6 +313,39 @@ class CosyVoiceTTS(TTSBase):
             synthesis_time=synthesis_time,
         )
 
+    def _resolve_prompt_wav(self) -> str:
+        """Resolve the reference audio path for zero-shot synthesis.
+
+        Priority:
+            1. COSYVOICE_PROMPT_WAV environment variable
+            2. CosyVoice repo's asset/zero_shot_prompt.wav (derived from model_dir)
+            3. COSYVOICE_ROOT environment variable
+
+        Returns:
+            Path to the prompt WAV file.
+        """
+        env = os.environ.get("COSYVOICE_PROMPT_WAV")
+        if env and Path(env).exists():
+            return env
+
+        # Derive from model_dir: <cosyvoice_root>/pretrained_models/<model>/
+        if self.model_dir:
+            root = Path(self.model_dir).parent.parent
+            prompt = root / "asset" / "zero_shot_prompt.wav"
+            if prompt.exists():
+                return str(prompt)
+
+        root_env = os.environ.get("COSYVOICE_ROOT")
+        if root_env:
+            prompt = Path(root_env) / "asset" / "zero_shot_prompt.wav"
+            if prompt.exists():
+                return str(prompt)
+
+        raise RuntimeError(
+            "Cannot locate zero_shot_prompt.wav reference audio. "
+            "Set COSYVOICE_PROMPT_WAV to the reference audio path."
+        )
+
     def _synthesize_sync(
         self,
         text: str,
@@ -321,34 +354,39 @@ class CosyVoiceTTS(TTSBase):
     ) -> np.ndarray:
         """Synchronous synthesis (runs in thread pool).
 
+        CosyVoice2 is a zero-shot model: it requires a reference audio
+        (prompt_wav) plus its transcript (prompt_text) to determine the
+        voice. Uses CosyVoice's bundled asset/zero_shot_prompt.wav by
+        default.
+
         Args:
             text: Text to synthesise.
-            voice_id: Voice identifier.
+            voice_id: Voice identifier (reserved for future voice mapping).
             speed: Speaking speed.
 
         Returns:
             Audio array as float32 numpy.
         """
-        # CosyVoice returns audio as torch tensor or numpy array
-        # The exact API depends on the version installed
-        result = self._model.tts(
-            text=text,
-            spk_id=voice_id,
-            speed=speed,
-        )
+        prompt_wav = self._resolve_prompt_wav()
+        prompt_text = "希望你以后能够做的比我还好呦。"
 
-        # Handle different return types
-        if hasattr(result, "numpy"):
-            # torch.Tensor
-            audio = result.numpy()
-        elif isinstance(result, np.ndarray):
-            audio = result
-        elif hasattr(result, "cpu"):
-            # torch.Tensor on GPU
-            audio = result.cpu().numpy()
+        chunks: list[np.ndarray] = []
+        for output in self._model.inference_zero_shot(
+            text,
+            prompt_text=prompt_text,
+            prompt_wav=prompt_wav,
+            stream=False,
+            speed=speed,
+        ):
+            speech = output["tts_speech"]
+            if hasattr(speech, "cpu"):  # torch.Tensor (possibly on GPU)
+                speech = speech.cpu().numpy()
+            chunks.append(np.asarray(speech, dtype=np.float32))
+
+        if chunks:
+            audio = np.concatenate(chunks, axis=-1)
         else:
-            # Assume it's array-like
-            audio = np.asarray(result, dtype=np.float32)
+            audio = np.array([], dtype=np.float32)
 
         # Ensure float32 and flatten
         audio = np.asarray(audio, dtype=np.float32).flatten()
