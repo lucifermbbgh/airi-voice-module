@@ -142,6 +142,7 @@ ENV_MAP: dict[str, str] = {
     "TTS_VOICE_ID": "tts.voice_id",
     "TTS_SPEED": "tts.speed",
     "TTS_DEVICE": "tts.device",
+    "TTS_MODEL_DIR": "tts.model_dir",
 }
 
 

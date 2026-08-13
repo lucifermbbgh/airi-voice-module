@@ -24,6 +24,7 @@ Dependencies:
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -40,13 +41,13 @@ logger = get_logger(__name__)
 
 MODELS: dict[str, dict] = {
     "base": {
-        "name": "CosyVoice-2-0.5B",
+        "name": "CosyVoice2-0.5B",
         "ram_mb": 1500,
         "rtf": 0.2,
         "description": "Default model, good balance of quality and speed",
     },
     "small": {
-        "name": "CosyVoice-2-0.5B",
+        "name": "CosyVoice2-0.5B",
         "ram_mb": 1000,
         "rtf": 0.15,
         "description": "Lightweight model, faster but slightly lower quality",
@@ -189,9 +190,13 @@ class CosyVoiceTTS(TTSBase):
         if self.model_dir:
             model_path = self.model_dir
         else:
-            # Use default CosyVoice-2 model name
             model_name = MODELS[self.model_size]["name"]
-            model_path = f"pretrained_models/{model_name}"
+            # Allow TTS_MODEL_DIR env var to override the default path
+            env_dir = os.environ.get("TTS_MODEL_DIR")
+            if env_dir:
+                model_path = env_dir
+            else:
+                model_path = f"pretrained_models/{model_name}"
 
         logger.info(
             "Loading CosyVoice model: {} (device={})",

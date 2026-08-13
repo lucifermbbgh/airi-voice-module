@@ -199,7 +199,8 @@ async def check_environment() -> dict:
 # ── Test: Synthesis (without playback, save WAV) ──────────────
 
 async def test_synthesize(text: str | None = None,
-                          output_dir: str = "output") -> bool:
+                          output_dir: str = "output",
+                          model_dir: str | None = None) -> bool:
     """Test TTS synthesis with CosyVoice 2 engine.
 
     All project imports are wrapped in try/except to handle
@@ -208,6 +209,7 @@ async def test_synthesize(text: str | None = None,
     Args:
         text: Text to synthesise (default: preset test phrases).
         output_dir: Directory to save WAV files.
+        model_dir: Path to CosyVoice model directory.
 
     Returns:
         True if all tests passed.
@@ -240,6 +242,7 @@ async def test_synthesize(text: str | None = None,
         sample_rate=24000,
         voice_id="default",
         speed=1.0,
+        model_dir=model_dir,
     )
 
     try:
@@ -353,7 +356,8 @@ async def test_synthesize(text: str | None = None,
 
 # ── Test: Synthesis + Playback (speaker output) ───────────────
 
-async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语音合成与播放测试。") -> bool:
+async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语音合成与播放测试。",
+                        model_dir: str | None = None) -> bool:
     """Test TTS synthesis + playback through speakers.
 
     All project imports are wrapped in try/except to handle
@@ -385,6 +389,7 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
         voice_id="default",
         speed=1.0,
         sample_rate=24000,
+        model_dir=model_dir,
     )
 
     try:
@@ -461,6 +466,13 @@ async def main() -> int:
         default="output",
         help="Output directory for WAV files (default: output/)",
     )
+    parser.add_argument(
+        "--model-dir",
+        type=str,
+        default=None,
+        help="Path to CosyVoice model directory "
+             "(default: $TTS_MODEL_DIR or pretrained_models/CosyVoice2-0.5B)",
+    )
 
     args = parser.parse_args()
 
@@ -502,7 +514,7 @@ async def main() -> int:
         all_passed = cuda_ok and cosy_ok and core_ok
 
     elif args.mode == "synthesize" and all_passed:
-        ok = await test_synthesize(args.text, args.output_dir)
+        ok = await test_synthesize(args.text, args.output_dir, args.model_dir)
         all_passed = all_passed and ok
 
     elif args.mode == "play" and all_passed:
@@ -510,17 +522,19 @@ async def main() -> int:
             print("\n" + "─" * 60)
         ok = await test_playback(
             args.text or "你好，欢迎使用AIRI语音模块，所有测试已完成。",
+            args.model_dir,
         )
         all_passed = all_passed and ok
 
     elif args.mode == "all" and all_passed:
-        ok = await test_synthesize(args.text, args.output_dir)
+        ok = await test_synthesize(args.text, args.output_dir, args.model_dir)
         all_passed = all_passed and ok
 
         if all_passed:
             print("\n" + "─" * 60)
             ok = await test_playback(
                 args.text or "你好，欢迎使用AIRI语音模块，所有测试已完成。",
+                args.model_dir,
             )
             all_passed = all_passed and ok
 
