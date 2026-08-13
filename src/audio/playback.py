@@ -73,6 +73,7 @@ class AudioPlayback:
         self._running = False
         self._paused = False
         self._event = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def _callback(self, outdata: np.ndarray, frames: int,
                   _time_info, _status: sd.CallbackFlags) -> None:
@@ -121,13 +122,21 @@ class AudioPlayback:
         else:
             self._current = None
             self._current_pos = 0
-            self._event.set()
+            # This runs in the PortAudio callback thread, NOT the asyncio
+            # loop thread. asyncio.Event.set() is not thread-safe, so schedule
+            # it back onto the loop via call_soon_threadsafe.
+            if self._loop is not None and not self._loop.is_closed():
+                self._loop.call_soon_threadsafe(self._event.set)
+            else:
+                self._event.set()
 
     async def start(self) -> None:
         """Start playback stream."""
         if self._running:
             logger.warning("Playback already running")
             return
+
+        self._loop = asyncio.get_running_loop()
 
         logger.info(
             "Starting playback: device={}, rate={}, channels={}",
