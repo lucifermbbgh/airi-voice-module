@@ -177,9 +177,15 @@ class AudioPlayback:
             logger.warning("Playback not running, ignoring play request")
             return
 
+        src_rate = sample_rate or self.sample_rate
+        if src_rate != self.sample_rate:
+            logger.debug("Resampling {} → {} Hz ({} samples)",
+                         src_rate, self.sample_rate, len(audio))
+            audio = self._resample(audio, src_rate, self.sample_rate)
+
         segment = PlaybackSegment(
             audio=audio.copy(),
-            sample_rate=sample_rate or self.sample_rate,
+            sample_rate=self.sample_rate,
             text=text,
             sequence=len(self._queue),
         )
@@ -188,6 +194,26 @@ class AudioPlayback:
 
         if self._current is None:
             self._advance_to_next()
+
+    @staticmethod
+    def _resample(audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
+        """Resample audio via linear interpolation.
+
+        Args:
+            audio: 1-D float32 audio array.
+            src_rate: Source sample rate in Hz.
+            dst_rate: Target sample rate in Hz.
+
+        Returns:
+            Resampled audio array.
+        """
+        if src_rate == dst_rate or len(audio) == 0:
+            return audio
+
+        n_out = int(round(len(audio) * dst_rate / src_rate))
+        x_old = np.linspace(0.0, 1.0, num=len(audio), endpoint=False)
+        x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
+        return np.interp(x_new, x_old, audio).astype(np.float32)
 
     async def stop_current(self) -> None:
         """Stop current playback immediately."""
@@ -209,6 +235,11 @@ class AudioPlayback:
         if self._current is None and not self._queue:
             return
         self._event.clear()
+        # Re-check after clear to avoid a race: _advance_to_next() runs in
+        # the audio callback thread and may set the event between the check
+        # above and the clear(), which would otherwise deadlock the wait.
+        if self._current is None and not self._queue:
+            return
         await self._event.wait()
 
     @property

@@ -393,9 +393,17 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
     )
 
     try:
+        import sounddevice as sd
+        # Use the output device's native sample rate (e.g. 44100 for Realtek),
+        # NOT the TTS sample rate (24000) — the playback stream resamples.
+        try:
+            device_rate = int(sd.query_devices(kind="output")["default_samplerate"])
+        except Exception:
+            device_rate = 44100
+
         playback = AudioPlayback(
             device_id=None,
-            sample_rate=cfg.sample_rate,
+            sample_rate=device_rate,
         )
 
         tts = CosyVoiceTTS(
