@@ -401,6 +401,7 @@ async def test_playback(text: str = "你好，欢迎使用AIRI语音模块，语
         tts = CosyVoiceTTS(
             model_size=cfg.model_size,
             device=cfg.device,
+            model_dir=cfg.model_dir,
             sample_rate=cfg.sample_rate,
             default_voice=cfg.voice_id,
             default_speed=cfg.speed,
