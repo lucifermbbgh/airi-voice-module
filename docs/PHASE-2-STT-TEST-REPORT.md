@@ -413,9 +413,9 @@ python -m src.main
 
 ### 相关文档
 
-- `docs/PHASE-1-DESIGN.md` — Phase 1 方案设计
-- `docs/PHASE-1-TEST-REPORT.md` — Phase 1 测试报告
-- `docs/PHASE-2-STT.md` — Phase 2 STT 方案设计
+- `docs/PHASE-1-VAD-DESIGN.md` — Phase 1 方案设计
+- `docs/PHASE-1-VAD-TEST-REPORT.md` — Phase 1 测试报告
+- `docs/PHASE-2-STT-DESIGN.md` — Phase 2 STT 方案设计
 - `docs/PHASE-2-STT-DETAILED-DESIGN.md` — Phase 2 STT 详细实现设计
 
 ### 相关提交

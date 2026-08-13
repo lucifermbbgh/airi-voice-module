@@ -602,7 +602,7 @@ airi-voice-module/
 │   └── test_pipeline.py              # 流水线集成测试
 │
 ├── docs/                             # 文档
-│   ├── PHASE-1-DESIGN.md             # Phase 1 设计文档
+│   ├── PHASE-1-VAD-DESIGN.md         # Phase 1 设计文档
 │   └── ARCHITECTURE.md               # 完整架构文档 (本文)
 │
 ├── logs/                             # 运行时日志输出

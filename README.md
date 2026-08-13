@@ -43,7 +43,7 @@ source .venv/bin/activate  # Linux/macOS
 # 基础依赖（VAD/STT/播放/配置）
 pip install -r requirements.txt
 
-# CosyVoice 2 TTS（需从 GitHub 源码 + 依赖清单，详见 docs/PHASE-3-TTS.md）
+# CosyVoice 2 TTS（需从 GitHub 源码 + 依赖清单，详见 docs/PHASE-3-TTS-DESIGN.md）
 # 关键依赖版本锁定：
 #   transformers==4.51.3  （4.55.x 会导致 LLM 重复生成乱码）
 #   x-transformers==2.11.24
@@ -106,12 +106,12 @@ tests/
 | 文档 | 内容 |
 |------|------|
 | `docs/ARCHITECTURE.md` | 总体架构 |
-| `docs/PHASE-1-DESIGN.md` + `PHASE-1-TEST-REPORT.md` | Phase 1 VAD 设计 + 测试 |
-| `docs/PHASE-2-STT.md` + `PHASE-2-STT-DETAILED-DESIGN.md` + `PHASE-2-STT-TEST-REPORT.md` | Phase 2 STT 总体/详细设计 + 测试 |
-| `docs/PHASE-3-TTS.md` + `PHASE-3-TTS-DETAILED-DESIGN.md` + `PHASE-3-TTS-TEST-REPORT.md` | Phase 3 TTS 总体/详细设计 + 测试 |
-| `docs/PHASE-4-LLM.md` + `PHASE-4-LLM-DETAILED-DESIGN.md` + `PHASE-4-TEST-REPORT.md` | Phase 4 LLM 总体/详细设计 + 测试 |
+| `docs/PHASE-1-VAD-DESIGN.md` + `PHASE-1-VAD-DETAILED-DESIGN.md` + `PHASE-1-VAD-TEST-REPORT.md` | Phase 1 VAD 总体/详细设计 + 测试 |
+| `docs/PHASE-2-STT-DESIGN.md` + `PHASE-2-STT-DETAILED-DESIGN.md` + `PHASE-2-STT-TEST-REPORT.md` | Phase 2 STT 总体/详细设计 + 测试 |
+| `docs/PHASE-3-TTS-DESIGN.md` + `PHASE-3-TTS-DETAILED-DESIGN.md` + `PHASE-3-TTS-TEST-REPORT.md` | Phase 3 TTS 总体/详细设计 + 测试 |
+| `docs/PHASE-4-LLM-DESIGN.md` + `PHASE-4-LLM-DETAILED-DESIGN.md` + `PHASE-4-LLM-TEST-REPORT.md` | Phase 4 LLM 总体/详细设计 + 测试 |
 | `docs/PHASE-3-WINDOWS-ISSUES.md` | Phase 3 Windows 部署问题记录 |
-| `docs/TASK-PROGRESS-REPORT.md` | 任务进度总览 |
+| `docs/archive/` | 历史快照（会话报告、进度快照、中间设计） |
 
 ## 许可证
 

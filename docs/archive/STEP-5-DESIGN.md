@@ -2,7 +2,7 @@
 
 > **日期**: 2026-07-27
 > **版本**: 1.0
-> **关联设计**: [PHASE-3-TTS.md](PHASE-3-TTS.md)
+> **关联设计**: [PHASE-3-TTS-DESIGN.md](../PHASE-3-TTS-DESIGN.md)
 > **关联提交**: `ceef273`, `fd0b01b`
 
 ---
