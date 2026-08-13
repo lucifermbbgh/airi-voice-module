@@ -298,3 +298,24 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 1. **精简依赖清单必须验证推理导入链**：conformer/diffusers/lightning/gdown/librosa 被误判为"训练/可视化无关"删除，但 Matcha-TTS 的 `matcha.utils.__init__` 顶层 import 会级联触发它们，推理也需要。教训：删依赖前要 `grep` 源码确认没有顶层 import 引用。
 2. **CosyVoice2 是零样本模型**：不能只传文本合成，需要参考音频（prompt_wav）+ 参考文本（prompt_text）确定音色。用 `inference_zero_shot`，参考音频用仓库自带的 `asset/zero_shot_prompt.wav`。
 3. **国内服务别走代理**：modelscope.cn 是国内服务器，残留 HTTP_PROXY 会导致连接被拒（WinError 10061）。下载国外源（PyPI/pytorch）才需要代理。
+4. **transformers 版本必须锁死 4.51.3**：这是"非正常语言"的根本原因。CosyVoice2 的 `Qwen2Encoder.forward_one_step` 用自定义逐步生成（手动传 `past_key_values` + 2D `attention_mask`），transformers 4.55.x 默认启用 SDPA attention，对 2D mask + KV cache 的处理与 4.51.x（eager）不同，导致 LLM 陷入重复生成循环（合成出"呜呜冬/打开打开/哦哦哦"等乱码）。锁定 `transformers==4.51.3` 后合成恢复（20 字文本从 13.6s 异常时长降到 3.52s 正常时长）。
+
+### 9.4 最终修复验证（2026-08-13）
+
+| 指标 | 修复前（transformers 4.55.2） | 修复后（transformers 4.51.3） |
+|:-----|:------------------------------|:------------------------------|
+| 20 字合成时长 | 13.6s（异常，~0.68s/字） | 3.52s（正常，~0.18s/字） |
+| 合成内容 | 重复乱码（"嗚嗚冬/打開/哦哦哦"） | 正常中文 |
+| 本地 STT 识别 | `'嗚嗚冬嗚嗚冬...'` | `'你好 我是Ari 你的智能语音助手'` |
+
+**修复动作**：`pip install transformers==4.51.3`（同时 `x-transformers==2.11.24`）。
+
+**关键修复清单（本次调试全部依赖）**：
+
+| 依赖 | 版本 | 作用 |
+|:-----|:-----|:-----|
+| transformers | ==4.51.3（锁死） | 修复 LLM 重复生成（SDPA 不兼容） |
+| x-transformers | ==2.11.24（锁死） | flow DiT RotaryEmbedding 版本敏感 |
+| torchvision | ==0.21.0+cu124 | 与 torch cu124 匹配 |
+| openai-whisper | 任意 | frontend 顶层 import（mel 谱提取） |
+| conformer / diffusers / lightning / librosa | 任意 | Matcha-TTS 子模块推理必需 |
