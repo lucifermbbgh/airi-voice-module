@@ -303,6 +303,28 @@ class CosyVoiceTTS(TTSBase):
         ...
 ```
 
+#### 3.2.1 零样本合成设计（2026-08-13 更新）
+
+CosyVoice2 是**零样本模型**，不能只传文本合成——它需要参考音频（prompt_wav）
+确定音色，以及参考音频对应的文字（prompt_text）。合成通过
+`inference_zero_shot(tts_text, prompt_text, prompt_wav)` 完成，返回生成器
+（逐 chunk yield `{'tts_speech': tensor}`）。
+
+核心实现（`src/tts/cosyvoice_tts.py`）：
+
+| 组件 | 设计 |
+|:-----|:-----|
+| `_synthesize_sync` | 调用 `inference_zero_shot`，拼接各 chunk 的 `tts_speech`，flatten + 音量归一化 |
+| `_resolve_prompt_wav` | 按优先级定位参考音频：① `COSYVOICE_PROMPT_WAV` 环境变量 ② 从 model_dir 推导 `asset/zero_shot_prompt.wav` ③ `COSYVOICE_ROOT` 环境变量 |
+| 默认 prompt | `asset/zero_shot_prompt.wav`（CosyVoice 仓库自带）+ prompt_text "希望你以后能够做的比我还好呦。" |
+
+**采样率设计**：CosyVoice2 输出 24000Hz（`cosyvoice2.yaml` 的 `sample_rate`），但
+Windows 默认输出设备（Realtek）原生 44100Hz。播放时在 `AudioPlayback.play()` 内
+做线性插值重采样（24000→44100），避免 PortAudio resample 失效导致的变调。
+
+**关键依赖锁定**：`transformers==4.51.3`（必须锁死，4.55.x 的 SDPA 与 CosyVoice
+的 `forward_one_step` 自定义逐步生成不兼容，导致 LLM 重复生成）+ `x-transformers==2.11.24`。
+
 ### 3.3 TTS 管理器 (`src/tts/tts_manager.py`)
 
 ```python

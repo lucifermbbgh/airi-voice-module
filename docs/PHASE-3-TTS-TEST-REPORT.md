@@ -291,7 +291,16 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 | 5 | `No module named 'matcha'` | Matcha-TTS 是 CosyVoice git 子模块，路径不在 sys.path | 创建 `matcha.pth` 注入 `third_party/Matcha-TTS` | ✅ matcha OK |
 | 6 | torchvision cu118 与 torch cu124 冲突 | 全局 torchvision 是 cu118 编译，torch 是 cu124，transformers 导入时触发 CUDA 版本检查 | 装 `torchvision==0.21.0+cu124` | ✅ 版本一致 |
 | 7 | 连续报 7 个缺失模块（whisper/conformer/diffusers/lightning/gdown/matplotlib/librosa） | 之前精简 `requirements_infer.txt` 时错误移除，注释误判为"训练/可视化无关"，实际 Matcha-TTS 的顶层 import 链（`matcha.utils.__init__`）级联触发 | 逐个补装 openai-whisper、conformer、diffusers、lightning(+torchmetrics+rootutils)、gdown/wget/matplotlib、librosa | ✅ 全部补齐 |
-| 8 | RTF≈1.0（目标 0.3） | onnxruntime 是 CPU 版，缺 `CUDAExecutionProvider`，speech_tokenizer/campplus 跑 CPU | 待优化：`pip uninstall onnxruntime` + `pip install onnxruntime-gpu` | ⏳ 未修复 |
+| 8 | RTF≈1.0（目标 0.3） | onnxruntime 是 CPU 版，缺 `CUDAExecutionProvider`，speech_tokenizer/campplus 跑 CPU | 已尝试 `onnxruntime-gpu==1.28.0`，但要求 CUDA 13 + cuDNN 9（本机 CUDA 12.4）加载失败回退 CPU | ⏳ 未修复（不影响正确性，仅影响速度） |
+
+#### 音频播放 Bug（4 项）
+
+| # | 问题现象 | 原因分析 | 修复方案 | 修复结果 |
+|:-:|:---------|:---------|:---------|:---------|
+| 9 | 播放声音变调（"花栗鼠音"） | CosyVoice2 输出 24000Hz，但 playback 用 24000 打开 44100Hz 的 Realtek 设备，PortAudio resample 未生效 | playback 流改用设备原生采样率(44100)，`play()` 里线性插值重采样 24000→44100 | ✅ 声音正常 |
+| 10 | 播放完成后程序停不下来（卡 12 分钟） | `_advance_to_next` 在 PortAudio 回调线程调用 `asyncio.Event.set()`，跨线程不安全，waiter 不被唤醒 | `start()` 保存 loop，`_advance_to_next` 用 `loop.call_soon_threadsafe()` 调度 set | ✅ 正常退出 |
+| 11 | `wait_for_completion` 死锁 | clear/set 竞态：回调线程 `set()` 与主线程 `clear()` 交错，event 被清后不再 set | `clear()` 后重新检查 current/queue 状态 | ✅ 已修复 |
+| 12 | `object NoneType can't be used in 'await'` | `tts_mgr.pause()/resume()` 是同步方法（返回 None），脚本误用 `await` | 去掉 `await`，直接调用 | ✅ 已修复 |
 
 ### 9.3 经验教训
 

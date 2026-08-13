@@ -521,3 +521,33 @@ python -m src.main
 | 7a | AIRI 连通性 | `asyncio.run(check())` | `✅ reachable` |
 | 7b-c | 全链路端到端 | `python -m src.main` | SPEECH→STT→AIRI→TTS 完整闭环 |
 | 8 | 上下文测试 | 连续两轮对话 | AIRI 记住前一轮信息 |
+
+---
+
+## 八、Windows 验证执行结果（2026-08-13）
+
+> 第七章的验证指南已在本会话 Windows 端实际执行，结果如下。
+
+### 8.1 验证结果汇总
+
+| 步骤 | 操作 | 结果 |
+|:-----|:-----|:-----|
+| 1 | Phase 4 单元测试（conversation） | ✅ 21/21 passed (0.17s) |
+| 2 | 完整测试套件 | ✅ 193 passed |
+| 3 | 上下文功能验证 | ✅ Turns: 2, History: 4 |
+| 4 | STT 无回归 | ✅ 67/67 passed (0.33s) |
+| 5 | VAD 单元测试 | ✅ 9/9 passed (0.61s，离线合成音频) |
+| 6 | TTS 合成 + 播放 | ✅ 已完成（见 PHASE-3-TTS-TEST-REPORT.md 第九章） |
+
+### 8.2 Windows 环境问题与修复
+
+| 问题 | 原因 | 修复 |
+|:-----|:-----|:-----|
+| pytest 缺失（`No module named pytest`） | Windows venv 未装 pytest | 设代理后 `pip install pytest pytest-asyncio` |
+| pip 下载超时（`ReadTimeoutError`） | PyPI 需走代理 | PowerShell 用 `$env:HTTP_PROXY="http://127.0.0.1:10809"`（非 cmd 的 `set`） |
+| pyworld 编译失败 | 旧版无 cp313 wheel | pyworld 0.3.5 已有 cp313 wheel，直接装 |
+
+### 8.3 剩余阻塞项
+
+- **Phase 1 VAD**：Realtek DSP 降噪导致 VAD 概率归零（离线测试 9/9 通过，但真实麦克风仍需禁用音频增强或外接 USB 麦）
+- **全链路端到端**：待 VAD 阻塞解决后执行（步骤 7）
