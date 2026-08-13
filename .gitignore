@@ -13,6 +13,10 @@ build/
 # Models (large binary files, download separately)
 models/*.onnx
 
+# Generated test audio (TTS synthesis output)
+*.wav
+output/
+
 # Logs
 logs/
 

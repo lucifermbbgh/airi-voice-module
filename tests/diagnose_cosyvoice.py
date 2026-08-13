@@ -16,9 +16,9 @@
 ====
 .. code-block:: powershell
 
-    python scripts/diagnose_cosyvoice.py
-    python scripts/diagnose_cosyvoice.py --text "你好，我是AIRI。"
-    python scripts/diagnose_cosyvoice.py --model-dir "D:\\DevProject\\PythonProject\\CosyVoice\\pretrained_models\\CosyVoice2-0.5B"
+    python tests/diagnose_cosyvoice.py
+    python tests/diagnose_cosyvoice.py --text "你好，我是AIRI。"
+    python tests/diagnose_cosyvoice.py --model-dir "D:\\DevProject\\PythonProject\\CosyVoice\\pretrained_models\\CosyVoice2-0.5B"
 
 输出
 ====
