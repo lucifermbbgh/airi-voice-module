@@ -3,7 +3,7 @@
 > **项目名称：** AIRI Voice Module
 > **目标平台：** Windows 11（主机运行） + Linux（开发环境）
 > **Python 版本：** 3.12+
-> **文档版本：** v1.0 · 2026-07-22
+> **文档版本：** v2.0 · 2026-08-13
 
 ---
 
@@ -36,21 +36,24 @@
 ```
 Phase 1 ── Capture + VAD + Playback (音频管道基础)    ✅ 已完成 (2026-07-21)
            │
-Phase 2 ── STT 集成 (Faster-Whisper large-v3)         📋 待规划
+Phase 2 ── STT 集成 (Faster-Whisper)                  ✅ 已完成 (2026-07-23)
            │  └─ 备选: SenseVoice / Paraformer
            │
-Phase 3 ── TTS 集成 (CosyVoice 2)                     📋 待规划
+Phase 3 ── TTS 集成 (CosyVoice 2)                     ✅ 已完成 (2026-08-13)
            │  └─ 备选: ChatTTS
            │
-Phase 4 ── AIRI WebSocket 对话集成                     📋 待规划
+Phase 4 ── AIRI WebSocket 对话集成                     ✅ 代码完成 (2026-08-11)
            │  └─ input:text / input:text:voice 事件
            │
-Phase 5 ── 打断机制                                    📋 待规划
+Phase 5 ── 打断机制                                    🚧 已预埋 tts_mgr.stop()
            │  └─ VAD 检测 → 暂停 TTS → 保留上下文 → 重新请求 LLM
            │
 Phase 6 ── 产品级体验                                  📋 待规划
               └─ 流式优化 / Speculative Decoding / 零拷贝格式转换
 ```
+
+> 注：Phase 3 TTS 的 Windows 端全链路（模型加载→合成→播放→语音切换）已于
+> 2026-08-13 验证通过，详见 `PHASE-3-TTS-TEST-REPORT.md` 第九章。
 
 **预计总工时：** 约 8~10 天（6 个 Phase）
 
@@ -276,7 +279,7 @@ shutdown_event.set()
 
 ---
 
-## 5. Phase 1：基础音频管道（当前阶段）
+## 5. Phase 1：基础音频管道（已完成）
 
 ### 5.1 状态：✅ 已完成 (2026-07-21)
 
@@ -352,7 +355,7 @@ VAD process_frame()
 
 ---
 
-## 6. Phase 2：STT 集成（待规划）
+## 6. Phase 2：STT 集成（已完成）
 
 ### 6.1 目标
 
@@ -392,7 +395,7 @@ Faster-Whisper 推理
 
 ---
 
-## 7. Phase 3：TTS 集成（待规划）
+## 7. Phase 3：TTS 集成（已完成）
 
 ### 7.1 目标
 
@@ -434,7 +437,7 @@ AudioPlayback.play()
 
 ---
 
-## 8. Phase 4：AIRI 对话集成（待规划）
+## 8. Phase 4：AIRI 对话集成（代码完成）
 
 ### 8.1 目标
 
@@ -481,7 +484,7 @@ Playback: [扬声器播放语音]
 
 ---
 
-## 9. Phase 5：打断机制（待规划）
+## 9. Phase 5：打断机制（已预埋 stop）
 
 ### 9.1 目标
 
@@ -566,19 +569,30 @@ airi-voice-module/
 │
 ├── src/                              # 源代码
 │   ├── __init__.py
-│   ├── main.py                       # 入口（CLI 参数解析）
+│   ├── main.py                       # 入口（CLI 模式分发 + _run_full() 全链路）
 │   ├── config.py                     # YAML 配置 + 环境变量覆盖
 │   ├── logger.py                     # loguru 日志配置
 │   │
 │   ├── audio/                        # 音频模块
 │   │   ├── __init__.py
 │   │   ├── capture.py                # AudioCapture（麦克风输入）
-│   │   ├── playback.py               # AudioPlayback（扬声器输出）
+│   │   ├── playback.py               # AudioPlayback（扬声器输出 + 重采样）
 │   │   └── resampler.py              # Resampler（重采样 48k↔16k）
 │   │
 │   ├── vad/                          # VAD 模块
 │   │   ├── __init__.py
 │   │   └── silero_vad.py             # SileroVAD（ONNX + 状态机）
+│   │
+│   ├── stt/                          # STT 模块
+│   │   ├── __init__.py
+│   │   ├── faster_whisper_stt.py     # Faster-Whisper 引擎
+│   │   └── post_processor.py         # 文本后处理（标点/热词）
+│   │
+│   ├── tts/                          # TTS 模块
+│   │   ├── __init__.py
+│   │   ├── tts_engine.py             # TTS 接口抽象
+│   │   ├── cosyvoice_tts.py          # CosyVoice 2 引擎（零样本合成）
+│   │   └── tts_manager.py            # 合成→缓存→播放编排
 │   │
 │   ├── pipeline/                     # 流水线编排
 │   │   ├── __init__.py
@@ -587,7 +601,8 @@ airi-voice-module/
 │   │
 │   └── airi/                         # AIRI 集成
 │       ├── __init__.py
-│       └── websocket_client.py       # AIRI WebSocket 客户端
+│       ├── websocket_client.py       # AIRI WebSocket 客户端
+│       └── conversation.py           # 对话上下文管理（Phase 4）
 │
 ├── models/                           # AI 模型文件
 │   └── silero_vad.onnx               # Silero VAD ONNX 模型 (2.3MB)
@@ -599,11 +614,19 @@ airi-voice-module/
 │   ├── __init__.py
 │   ├── test_vad.py                   # VAD 状态机单元测试
 │   ├── test_capture.py               # 捕获模块测试
-│   └── test_pipeline.py              # 流水线集成测试
+│   ├── test_pipeline.py              # 流水线集成测试
+│   ├── test_stt.py / test_stt_integration.py   # STT 单元/集成测试
+│   ├── test_tts.py / test_tts_integration.py   # TTS 单元/集成测试
+│   ├── test_conversation.py          # Phase 4 上下文管理测试
+│   ├── diagnose_cosyvoice.py         # TTS 诊断脚本（官方 API 二分定位）
+│   └── transcribe_wavs.py            # 本地 STT 转写脚本
 │
 ├── docs/                             # 文档
-│   ├── PHASE-1-VAD-DESIGN.md         # Phase 1 设计文档
-│   └── ARCHITECTURE.md               # 完整架构文档 (本文)
+│   ├── ARCHITECTURE.md               # 完整架构文档 (本文)
+│   ├── PHASE-1-VAD-{DESIGN, DETAILED-DESIGN, TEST-REPORT}.md
+│   ├── PHASE-2-STT-{DESIGN, DETAILED-DESIGN, TEST-REPORT}.md
+│   ├── PHASE-3-TTS-{DESIGN, DETAILED-DESIGN, TEST-REPORT}.md
+│   └── PHASE-4-LLM-{DESIGN, DETAILED-DESIGN, TEST-REPORT}.md
 │
 ├── logs/                             # 运行时日志输出
 │

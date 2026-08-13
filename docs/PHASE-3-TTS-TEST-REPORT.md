@@ -328,3 +328,33 @@ CosyVoice 2 合成 → AudioPlayback 播放 → 扬声器 🔊
 | torchvision | ==0.21.0+cu124 | 与 torch cu124 匹配 |
 | openai-whisper | 任意 | frontend 顶层 import（mel 谱提取） |
 | conformer / diffusers / lightning / librosa | 任意 | Matcha-TTS 子模块推理必需 |
+
+---
+
+## 十、Windows 部署问题记录（2026-07-27）
+
+> 原独立文档 `PHASE-3-WINDOWS-ISSUES.md` 已合并至此，记录 Phase 3 早期 Windows
+> 部署/安装阶段（pip 编译、环境配置）的问题，与第九章「验证阶段问题」互补。
+
+| # | 问题 | 根因 | 修复 |
+|:-:|:-----|:-----|:-----|
+| 1 | CosyVoice 2 PyPI 安装失败 | PyPI `cosyvoice 0.0.8` 是社区陈旧版，官方未发布 | 从 GitHub 源码 + `.pth` 注入 |
+| 2 | 验证脚本缺失依赖崩溃 | 脚本 import 未安装的包 | 补齐依赖 |
+| 3 | 基础依赖缺失 | venv 缺基础包 | `pip install -r requirements.txt` |
+| 4 | CUDA 模型加载失败 | CUDA 不可用时崩溃 | 加 CPU 兜底重试逻辑（`fd0b01b`） |
+| 5 | grpcio 编译失败 | pkg_resources 缺失、无 C 编译器 | 放宽 pin 用预编译 wheel |
+| 6 | numpy 源码编译失败 | 无 C 编译器 | 放宽版本用 wheel |
+| 7 | pydantic-core 编译失败 | Python 3.13 无 wheel | 放宽 pydantic 版本 |
+| 8 | pip 缓存权限错误 | MarkupSafe wheel 损坏 | 清 pip 缓存 |
+| 9 | grpcio-tools protobuf 冲突 | 依赖回溯 | 固定 protobuf 版本 |
+| 10 | pyworld 编译失败 | 无 MSVC Build Tools | 用 cp313 wheel（pyworld 0.3.5） |
+| 11 | `--no-deps` 传递依赖缺失 | 跳过依赖解析 | 去掉 `--no-deps` 完整解析 |
+| 12 | CosyVoice 仓库无 setup.py | 仓库结构使然 | 无需 `pip install -e .`，用 `.pth` |
+| 13 | 跨项目 venv 环境混乱 | `--system-site-packages` 共享全局包 | 明确 venv 隔离 |
+| 14 | pyyaml import 名称错误 | 测试脚本写错包名 | 修正为 `yaml` |
+| 15 | CosyVoice 无法全局导入 | 无 setup.py | `.pth` 文件（必须 ASCII 编码，PowerShell `echo >` 默认 UTF-16 会崩溃） |
+| 16 | Python 3.13 + CUDA wheel 不兼容 | 早期无 cu124 wheel | `torch==2.6.0+cu124` |
+
+**共性结论**：Python 3.13 早期生态环境不成熟，多数问题源于「无预编译 wheel 导致
+源码编译失败」和「CosyVoice 无 setup.py 需手动注入路径」。最终通过放宽版本 pin
+（用有 cp313 wheel 的版本）+ `.pth` 路径注入解决。

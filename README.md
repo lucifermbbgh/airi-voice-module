@@ -110,7 +110,6 @@ tests/
 | `docs/PHASE-2-STT-DESIGN.md` + `PHASE-2-STT-DETAILED-DESIGN.md` + `PHASE-2-STT-TEST-REPORT.md` | Phase 2 STT 总体/详细设计 + 测试 |
 | `docs/PHASE-3-TTS-DESIGN.md` + `PHASE-3-TTS-DETAILED-DESIGN.md` + `PHASE-3-TTS-TEST-REPORT.md` | Phase 3 TTS 总体/详细设计 + 测试 |
 | `docs/PHASE-4-LLM-DESIGN.md` + `PHASE-4-LLM-DETAILED-DESIGN.md` + `PHASE-4-LLM-TEST-REPORT.md` | Phase 4 LLM 总体/详细设计 + 测试 |
-| `docs/PHASE-3-WINDOWS-ISSUES.md` | Phase 3 Windows 部署问题记录 |
 
 ## 许可证
 
