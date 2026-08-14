@@ -246,6 +246,35 @@ python -m tests.test_mic_level
 
 ---
 
+### 问题 8: ✅ Windows 默认设备（MME）采到静音 — 自动选 DirectSound（2026-08-15 已解决）
+
+- **症状**:
+  - 诊断脚本 `--device 5`（DirectSound）VAD 正常，但 `src/main.py` 用默认设备采到静音
+  - Windows 的 sounddevice 默认输入设备映射到 MME hostapi（索引 1），Realtek 声卡在 MME 下返回静音
+
+- **根因**:
+  > `config/default.yaml` 的 `input_device: null`（系统默认），sounddevice 默认走 MME hostapi，
+  > 而 Realtek 声卡在 MME 下采到静音（0.0%）。DirectSound hostapi 采集正常。
+
+- **各 hostapi 采集对比**:
+
+  | 索引 | API | 采集结果 |
+  |:----:|:----|:---------|
+  | 1 | MME（默认） | ❌ 静音（0.0%） |
+  | 5 | DirectSound | ✅ 正常（Peak 24.3%） |
+  | 9 | WASAPI | ⚠️ Peak 775% 异常（float32 缩放 bug） |
+  | 17 | WDM-KS | ❌ Invalid device（被占用） |
+
+- **修复**:
+  - `AudioCapture._resolve_input_device`：Windows 上 device_id 为 None 时自动选 DirectSound hostapi 的默认输入设备
+  - 提交 `182094c` 之后的设备选择修复
+
+- **验证**:
+  - 新增 2 个测试（显式 device_id 原样返回 / 非 Windows 返回 None）
+  - pytest 204 passed
+
+---
+
 ## 六、统计汇总
 
 ### 测试汇总
@@ -264,7 +293,7 @@ python -m tests.test_mic_level
 | 严重程度 | 数量 | 已解决 | 待解决 |
 |:--------|:---:|:-----:|:-----:|
 | 🔴 阻塞 | 1 | 1 | 0 |
-| 🟡 中等 | 3 | 3 | 0 |
+| 🟡 中等 | 4 | 4 | 0 |
 | 🟢 轻微 | 3 | 3 | 0 |
 
 ---

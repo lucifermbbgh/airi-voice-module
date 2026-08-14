@@ -101,3 +101,17 @@ class TestAudioCapture:
             assert "id" in dev
             assert "name" in dev
             assert "channels" in dev
+
+    def test_resolve_input_device_explicit(self):
+        """显式 device_id 应原样返回，不触发自动选择。"""
+        from src.audio.capture import AudioCapture
+
+        assert AudioCapture._resolve_input_device(5) == 5
+        assert AudioCapture._resolve_input_device(0) == 0
+
+    def test_resolve_input_device_non_windows_returns_none(self, monkeypatch):
+        """非 Windows 平台且 device_id 为 None 时应返回 None（保持默认行为）。"""
+        from src.audio.capture import AudioCapture
+
+        monkeypatch.setattr("src.audio.capture.sys.platform", "linux")
+        assert AudioCapture._resolve_input_device(None) is None

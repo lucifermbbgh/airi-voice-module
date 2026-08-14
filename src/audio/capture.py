@@ -13,6 +13,7 @@ task then reads, resamples, and pushes to the VAD pipeline.
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import AsyncIterator
 
 import numpy as np
@@ -55,7 +56,7 @@ class AudioCapture:
             channels: Number of audio channels.
             target_sample_rate: Target sample rate for VAD.
         """
-        self.device_id = device_id
+        self.device_id = self._resolve_input_device(device_id)
         self.sample_rate = sample_rate
         self.frames_per_buffer = frames_per_buffer
         self.channels = channels
@@ -65,6 +66,37 @@ class AudioCapture:
         self._running = False
         self._buffer = AudioRingBuffer()
         self._resampler = Resampler(sample_rate, target_sample_rate)
+
+    @staticmethod
+    def _resolve_input_device(device_id: int | None) -> int | None:
+        """Resolve the input device to use when ``device_id`` is None.
+
+        在 Windows 上，sounddevice 的默认输入设备（None）通常映射到 MME hostapi，
+        而 Realtek 声卡在 MME 下会采到静音（0.0%），导致 VAD 无法工作。
+        因此当 device_id 为 None 且平台为 Windows 时，自动选择 DirectSound
+        hostapi 的默认输入设备（其采集数据正常）。
+
+        Args:
+            device_id: 显式指定的设备 ID（None = 自动选择）。
+
+        Returns:
+            解析后的设备 ID；若无法解析或非 Windows，返回 None 保持默认行为。
+        """
+        if device_id is not None:
+            return device_id
+        if sys.platform != "win32":
+            return None
+        try:
+            for api in sd.query_hostapis():
+                if "DirectSound" in api["name"] and api["default_input_device"] >= 0:
+                    logger.info(
+                        "Windows 自动选择 DirectSound 输入设备: {}",
+                        api["default_input_device"],
+                    )
+                    return api["default_input_device"]
+        except Exception as e:
+            logger.warning("解析 DirectSound 输入设备失败，回退默认: {}", e)
+        return None
 
     def _callback(self, indata: np.ndarray, frames: int,
                   _time_info, _status: sd.CallbackFlags) -> None:
