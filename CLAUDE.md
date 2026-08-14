@@ -6,14 +6,14 @@
 
 | Phase | 内容 | 完成度 | 平台 |
 |-------|------|:------:|------|
-| Phase 1 | VAD 语音检测 | ✅ 100% 代码 | Windows 端 Realtek DSP 阻塞 |
+| Phase 1 | VAD 语音检测 | ✅ 100% | 已解决（context 前缀 bug） |
 | Phase 2 | STT 语音识别 | ✅ 100% | Linux + Windows 双平台 67/67 |
 | Phase 3 | TTS 语音合成 | 🔶 95% | Linux 67/67，Windows 待 CUDA PyTorch |
 | Phase 4 | LLM 对话集成 | ✅ 100% Linux | Windows 端到端待验证 |
 | Phase 5 | 打断机制 | ⬜ 0% | 已预埋 tts_mgr.stop() |
 | Phase 6 | 产品化 | ⬜ 0% | — |
 
-**阻塞项**：Phase 1 Windows Realtek DSP 降噪 → VAD 归零；Phase 3 Windows CUDA PyTorch 安装。
+**阻塞项**：Phase 3 Windows CUDA PyTorch 安装。
 
 ## 架构
 

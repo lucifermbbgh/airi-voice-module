@@ -1,7 +1,7 @@
 # AIRI 语音对话模块 — Phase 1 VAD 详细实现设计
 
 > **日期**: 2026-08-13
-> **版本**: 1.0 (实现完成，离线测试通过；Windows 实时 VAD 受 Realtek DSP 阻塞)
+> **版本**: 1.1 (实现完成；context 前缀 bug 已修复，Windows 实时 VAD 正常)
 > **对应代码**: `src/audio/capture.py`、`src/audio/resampler.py`、`src/pipeline/ring_buffer.py`、`src/vad/silero_vad.py`、`src/pipeline/audio_pipeline.py`
 > **单元测试**: `tests/test_vad.py` (9 项)
 > **总体设计**: 见 `PHASE-1-VAD-DESIGN.md`
@@ -242,13 +242,13 @@ VAD 检测在 capture_loop 内联执行（逐帧），语音事件通过回调�
 覆盖点：状态机转换（SILENCE→PENDING_START→SPEECH→END）、false start 抑制、
 事件字段完整性、ONNX 模型加载。
 
-**平台结果**：Linux 9/9 ✅；Windows 离线 9/9 ✅（真实麦克风受 Realtek DSP 阻塞）。
+**平台结果**：Linux 9/9 ✅；Windows 真实麦克风已验证（context bug 修复后概率正常）。
 
 ---
 
 ## 九、已知问题
 
-### 9.1 Realtek DSP 降噪（阻塞项）
+### 9.1 ~~Realtek DSP 降噪~~（误判，已解决：context 前缀 bug）
 
 **现象**：Windows 端真实麦克风输入时，Silero VAD 概率归零（仅 7.87%，远低于 0.5 阈值）。
 

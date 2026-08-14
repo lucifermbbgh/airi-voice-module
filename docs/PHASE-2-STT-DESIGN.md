@@ -453,7 +453,7 @@ class STTConfig:
 
 | 风险 | 概率 | 影响 | 缓解方案 |
 |------|------|------|---------|
-| Realtek DSP 问题传导到 STT | 🔴 高 | 被 DSP 过滤的音频 STT 识别率极低 | Linux 开发测试；备选 USB 麦克风绕过板载声卡 |
+| ~~Realtek DSP 问题~~（已解决） | ✅ 已修复 | 实为 VAD context 前缀缺失，已修复 `8e37cb2` | 音频采集正常，无传导影响 |
 | Faster-Whisper 模型下载失败 | 🟡 中 | 首次启动无法运行 | 预下载到 `models/`；提供离线安装包脚本 |
 | CPU 推理延迟过高（长句 >10s） | 🟡 中 | 对话卡顿 | VAD 配置 `min_silence_duration=0.3` 切更短句 |
 | CUDA 不可用导致性能不足 | 🟡 中 | GPU 加速不可用 | int8 + CPU 默认方案，RTF<0.2 已足够 |

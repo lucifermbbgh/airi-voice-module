@@ -209,29 +209,40 @@ python -m tests.test_mic_level
 - **解决方案**: 统一安装命令（跳过 SSL + 跳过 PyTorch）
 - **执行结果**: ✅ 文档已更新
 
-### 问题 7: 🔴 Realtek 声卡驱动 DSP 降噪导致 VAD 概率归零 ⚠️ 未解决
+### 问题 7: ✅ Silero VAD 输入缺 context 前缀导致概率归零（2026-08-15 已解决）
 
 - **症状**:
-  - 麦克风电平正常 (peak=100%)
-  - VAD 概率 max=0.0787（直捕）/ 0.0038（标准）
-  - 直捕 16kHz 排除重采样问题
-  - ONNX Runtime vs silero-vad 包 API 对比两种方式都得到零概率（已通过模型对比工具验证）
+  - 麦克风电平正常（peak=24.3%, RMS=3.9%）
+  - VAD 概率 max≈0.002（真实语音），远低于阈值 0.3
+  - ~~曾误判为「Realtek DSP 降噪」~~（2026-08-15 纠正）
 
-- **根因**:
-  > 笔记本电脑 **Realtek 麦克风阵列声卡驱动** 内置降噪/波束成形 DSP。驱动层面的音频处理在送到应用层之前就已经滤除了 Silero VAD 需要的语音特征频率。
+- **真正根因**:
+  > Silero VAD v5 模型的输入需要 **576 样本（64 样本 context + 512 样本 chunk）**，
+  > 因为模型有 64 样本的感受野（receptive field）。原 `_get_speech_prob` 只传 512 样本，
+  > 缺 context 前缀，导致模型对正常语音输出错误低概率（0.002）。
+  >
+  > 此 bug 从项目初期就存在，但 `tests/test_vad.py` mock 了模型加载，
+  > 从未真正测试 ONNX 推理，掩盖了问题。
 
-- **建议解决方案**（按优先级）:
+- **排查过程**（关键转折）:
+  1. 默认设备 MME（索引 1）→ 采到静音（0.0%）
+  2. WASAPI（索引 9）→ Peak 775% 异常（float32 缩放 bug）
+  3. DirectSound（索引 5）→ Peak 正常（24.3%），但 VAD 概率仍 0.002
+  4. 用 faster-whisper 转写录音 → 确认采集到清晰语音「今天天气很好」
+  5. 下载官方模型对比 → hash 一致（`302cb198...`），排除模型损坏
+  6. 读官方 `utils_vad.py` → 发现 context 拼接逻辑（576 样本）
 
-  | # | 方案 | 操作 | 状态 |
-  |:-:|:----|:-----|:----:|
-  | ① | **禁用音频增强** | Windows → 声音设置 → 麦克风阵列 → 增强 → 关闭所有效果 | ⏳ 待测试 |
-  | ② | **外接 USB 麦克风** | USB 麦克风走独立音频通道，跳过笔记本内置 DSP | ⏳ 待测试 |
-  | ③ | **换用 webrtcvad** | WebRTC VAD 对降噪后音频的兼容性更好 | ⏳ 可选方案 |
+- **修复**:
+  - `_get_speech_prob` 加入 context 拼接与更新（对齐官方用法），提交 `8e37cb2`
 
-- **提交的诊断工具**:
+- **验证**:
+  - 真实录音 VAD 概率：0.002 → **1.0**（>0.9 帧 96/156）
+  - 新增 `tests/test_vad_model_smoke.py` 真实模型 smoke test（防回归）
+
+- **诊断工具**:
   - `tests/test_vad_diagnostic.py` — 实时 VAD 概率 + `--direct-16k` 直捕模式
   - `tests/test_mic_level.py` — 麦克风电平诊断
-  - `tests/test_vad_model_compare.py` — ONNX Runtime vs 包 API 对比
+  - `tests/record_mic.py` — 录音验证（采集音频 + faster-whisper 转写客观确认）
 
 ---
 
@@ -252,7 +263,7 @@ python -m tests.test_mic_level
 
 | 严重程度 | 数量 | 已解决 | 待解决 |
 |:--------|:---:|:-----:|:-----:|
-| 🔴 阻塞 | 1 | 0 | 1（Realtek DSP） |
+| 🔴 阻塞 | 1 | 1 | 0 |
 | 🟡 中等 | 3 | 3 | 0 |
 | 🟢 轻微 | 3 | 3 | 0 |
 
@@ -262,7 +273,7 @@ python -m tests.test_mic_level
 
 ### 阻塞
 
-- [ ] **Realtek DSP 降噪导致 VAD 检测失败** — 需尝试禁用音频增强或外接 USB 麦克风
+- [x] **Silero VAD context 前缀缺失导致检测失败** — 已修复（`8e37cb2`），真实语音概率恢复正常（0.002 → 1.0）
 
 ### 后续 Phase 建议
 

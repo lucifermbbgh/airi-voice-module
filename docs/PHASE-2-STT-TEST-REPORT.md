@@ -396,7 +396,7 @@ python -m src.main
 
 ### 已知限制
 
-1. **VAD 阻塞** — Phase 1 Realtek DSP 问题未解决，全链路语音输入（VAD→STT）无法验证
+1. **VAD 阻塞** — 已解决（Phase 1 context 前缀 bug 已修复，真实语音概率恢复正常）
 2. **多语言支持** — small 模型已测试中文/英文，其他语言未验证
 3. **连续语音流** — 当前 STT 按片段处理，未实现流式拼接和端点检测
 
@@ -529,5 +529,5 @@ python -m src.main
 | 问题 | 说明 | 应对 |
 |:----|:-----|:-----|
 | PyCharm 终端 Ctrl+C 无法中断 | SIGINT 无法送达 asyncio 进程 | 在原生 Windows Terminal / PowerShell 中运行 |
-| Realtek DSP 降噪 | 板载声卡 DSP 滤波导致 VAD 概率归零 (7.87%) | 禁用音频增强 / 使用 USB 麦克风 |
+| ~~Realtek DSP 降噪~~（误判） | 实为 Silero VAD context 前缀缺失 | 已修复（`8e37cb2`），概率 0.002→1.0 |
 | 匿名下载限速 | 无 HF_TOKEN 时 small 模型下载 9 分钟 | 设置 `$env:HF_TOKEN` |

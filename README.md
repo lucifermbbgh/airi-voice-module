@@ -15,14 +15,14 @@ Voice Module 作为 AIRI 插件运行，通过 `ws://localhost:10443` 与 AIRI �
 
 | Phase | 内容 | 状态 | 平台 |
 |-------|------|------|------|
-| **Phase 1** | VAD 语音检测 | ✅ 代码完成 | Windows Realtek DSP 阻塞 |
+| **Phase 1** | VAD 语音检测 | ✅ 完成 | 已解决（context bug） |
 | **Phase 2** | STT 语音识别（Faster-Whisper） | ✅ 完成 | Linux + Windows 双平台 67/67 |
 | **Phase 3** | TTS 语音合成（CosyVoice 2） | ✅ 完成 | Linux 67/67，Windows 全链路闭环 |
 | **Phase 4** | LLM 对话集成（AIRI WebSocket） | ✅ 代码完成 | Linux 201 测试，Windows 单元验证通过 |
 | **Phase 5** | 打断机制 | 🚧 已预埋 `tts_mgr.stop()` | 待实现 |
 | **Phase 6** | 产品级体验 | 📋 待规划 | — |
 
-**当前阻塞项**：Phase 1 Windows 端 Realtek 声卡 DSP 降噪导致 VAD 概率归零，需禁用音频增强或外接 USB 麦克风。全链路端到端测试依赖此阻塞解决。
+**当前阻塞项**：无 VAD 阻塞（context 前缀 bug 已修复）。全链路端到端测试待 Phase 3 Windows CUDA PyTorch。
 
 ## 快速开始
 

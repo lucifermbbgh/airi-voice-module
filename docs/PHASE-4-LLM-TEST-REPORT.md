@@ -303,7 +303,7 @@ python -m pytest tests/test_stt.py tests/test_stt_integration.py -v -q
 python -m pytest tests/test_vad.py -v -q
 ```
 
-**当前预期**（Realtek DSP 未修复时）：**Linux 上 9 passed，Windows 上 FAILED**。
+**当前预期**（context 前缀 bug 已修复后）：**Linux 与 Windows 均应通过**。
 
 #### 5b：尝试修复 — 禁用 Realtek 音频增强
 
@@ -549,5 +549,5 @@ python -m src.main
 
 ### 8.3 剩余阻塞项
 
-- **Phase 1 VAD**：Realtek DSP 降噪导致 VAD 概率归零（离线测试 9/9 通过，但真实麦克风仍需禁用音频增强或外接 USB 麦）
+- **Phase 1 VAD**：已解决（context 前缀 bug 修复，`8e37cb2`；真实语音概率恢复正常）
 - **全链路端到端**：待 VAD 阻塞解决后执行（步骤 7）
