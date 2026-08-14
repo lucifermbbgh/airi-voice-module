@@ -109,6 +109,7 @@ class SileroVAD:
         self._get_speech_timestamps = None
         self._collect_audio = None
         self._hn = None  # Hidden state for stateful ONNX model
+        self._context = None  # Context buffer for Silero VAD receptive field
 
         # State machine
         self._state = SpeechState.SILENCE
@@ -210,7 +211,16 @@ class SileroVAD:
             name = inp.name
 
             if name == 'input':
-                input_feed[name] = audio_frame.reshape(1, -1).astype(np.float32)
+                x = audio_frame.reshape(1, -1).astype(np.float32)
+                # Silero VAD v5 需要 context 前缀（感受野）：
+                # 16kHz 下 64 样本，8kHz 下 32 样本。
+                # 缺少 context 会导致模型输出错误的低概率（官方 utils_vad.py 的用法）。
+                context_size = 64 if self.sample_rate == 16000 else 32
+                if self._context is None:
+                    self._context = np.zeros((1, context_size), dtype=np.float32)
+                x = np.concatenate([self._context, x], axis=1)
+                self._context = x[:, -context_size:]
+                input_feed[name] = x
             elif name == 'sr':
                 input_feed[name] = np.array([self.sample_rate], dtype=np.int64)
             elif 'state' in name.lower() or 'hn' in name.lower():
