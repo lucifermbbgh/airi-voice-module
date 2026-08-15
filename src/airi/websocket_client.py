@@ -312,12 +312,9 @@ class AIRIClient:
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON message: {raw[:100]}") from e
 
-        # superjson envelope: {"json": <payload>, "meta": {...}}
-        if (
-            isinstance(parsed, dict)
-            and isinstance(parsed.get("json"), dict)
-            and "meta" in parsed
-        ):
+        # superjson envelope: {"json": <payload>, "meta": {...}?}
+        # AIRI emits {"json": {...}} even without special values; meta is optional.
+        if isinstance(parsed, dict) and isinstance(parsed.get("json"), dict):
             return parsed["json"]
 
         return parsed

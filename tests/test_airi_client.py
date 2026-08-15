@@ -164,8 +164,16 @@ class TestAIRIClient:
         assert msg["type"] == "x"
         assert msg["data"]["a"] == 1
 
-    def test_parse_message_superjson_fallback(self):
-        """superjson wrapper ({json, meta}) unwraps to the inner json."""
+    def test_parse_message_superjson_no_meta(self):
+        """superjson envelope without meta (AIRI's actual wire format)."""
+        msg = AIRIClient._parse_message(
+            '{"json": {"type": "module:authenticated", "data": {"authenticated": true}}}'
+        )
+        assert msg["type"] == "module:authenticated"
+        assert msg["data"]["authenticated"] is True
+
+    def test_parse_message_superjson_with_meta(self):
+        """superjson envelope with meta also unwraps to the inner json."""
         msg = AIRIClient._parse_message(
             '{"json": {"type": "x", "data": {}}, "meta": {"values": {}}}'
         )
