@@ -202,7 +202,7 @@ def load_config(config_path: str | Path = "config/default.yaml") -> Config:
 
     # Load from file if exists
     if config_path.exists():
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
     else:
         # Use built-in defaults

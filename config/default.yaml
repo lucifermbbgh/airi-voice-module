@@ -41,8 +41,8 @@ stt:
 
 airi:
   host: "localhost"
-  port: 6121                     # AIRI WebSocket port（AIRI 默认 6121）
-  path: "/ws"                    # AIRI WebSocket 路径
+  port: 6121                     # AIRI WebSocket port (AIRI default 6121)
+  path: "/ws"                    # AIRI WebSocket path
   token: ""                      # Authentication token
   reconnect_interval: 5          # Reconnect interval (seconds)
   max_reconnect_attempts: 0      # 0 = unlimited retries
