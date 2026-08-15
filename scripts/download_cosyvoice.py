@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 """
-CosyVoice 模型下载脚本。
+CosyVoice 模型下载脚本（HF 镜像优先，断点续传可靠）。
 
-下载 CosyVoice2-0.5B 模型（ModelScope `iic/CosyVoice2-0.5B`）到本地
-`pretrained_models/CosyVoice2-0.5B`，供离线 TTS 合成使用。
+背景：modelscope 的 snapshot_download 下载大文件（llm.pt ~2GB）时连接
+中断后重试不可靠，导致文件截断（"File is not a zip file"）。改用
+huggingface_hub（配 hf-mirror 镜像）下载，它支持断点续传 + 下载后校验。
 
-背景：cosyvoice_tts.load_model 在 model_dir 为空时会回退到
-`pretrained_models/CosyVoice2-0.5B`，但该目录不存在时 CosyVoice 会把这个
-「本地路径字符串」当成 ModelScope model_id 去在线下载，得到 404
-（正确的 model_id 是 `iic/CosyVoice2-0.5B`）。本脚本把模型正确下载到
-本地目录，之后在 config/default.yaml 里把 tts.model_dir 指向该目录即可。
+同时补下载参考音频 zero_shot_prompt.wav（位于 CosyVoice 源码仓库 asset/，
+ModelScope 模型仓库不含它）。
 
 用法（Windows PowerShell，项目 .venv 内）：
+    # 先设 HF 镜像（国内加速 + 断点续传）
+    $env:HF_ENDPOINT="https://hf-mirror.com"
     python scripts/download_cosyvoice.py
 
-    # 下载到自定义目录
+    # 指定目录
     python scripts/download_cosyvoice.py --dir D:/models/CosyVoice2-0.5B
-
-    # 强制重新下载
-    python scripts/download_cosyvoice.py --force
 """
 
 from __future__ import annotations
@@ -26,33 +23,23 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _PROJECT_ROOT = _HERE.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
-MODEL_ID = "iic/CosyVoice2-0.5B"
+HF_REPO_ID = "FunAudioLLM/CosyVoice2-0.5B"
+PROMPT_WAV_URL = (
+    "https://github.com/FunAudioLLM/CosyVoice/raw/main/asset/zero_shot_prompt.wav"
+)
 DEFAULT_DIR = _PROJECT_ROOT / "pretrained_models" / "CosyVoice2-0.5B"
-# 模型完整性判断的关键文件（缺任一个都视为下载不完整）。
-# CosyVoice2 加载需要（见 cosyvoice/cli/cosyvoice.py CosyVoice2.__init__）：
-#   cosyvoice2.yaml + llm.pt/flow.pt/hift.pt + campplus.onnx
-#   + speech_tokenizer_v2.onnx + spk2info.pt + CosyVoice-BlankEN/ 目录
-_REQUIRED_FILES = [
-    "cosyvoice2.yaml",
-    "llm.pt",
-    "flow.pt",
-    "hift.pt",
-    "campplus.onnx",
-    "speech_tokenizer_v2.onnx",
-    "spk2info.pt",
-    "CosyVoice-BlankEN",
-]
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Download CosyVoice2-0.5B model from ModelScope",
+        description="Download CosyVoice2-0.5B model (HuggingFace mirror)",
     )
     parser.add_argument(
         "--dir",
@@ -63,17 +50,29 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force re-download even if the model already exists",
+        help="Force re-download even if files exist",
     )
     return parser.parse_args()
 
 
-def _is_complete(download_dir: Path) -> bool:
-    """Return True if the model directory looks complete."""
-    if not download_dir.exists():
+def _download_prompt_wav(download_dir: Path) -> bool:
+    """Download the zero-shot reference audio into the model asset dir."""
+    prompt = download_dir / "asset" / "zero_shot_prompt.wav"
+    if prompt.exists() and prompt.stat().st_size > 100_000:
+        print(f"  ✅ 参考音频已存在：{prompt}")
+        return True
+    prompt.parent.mkdir(parents=True, exist_ok=True)
+    print(f"  📥 下载参考音频 zero_shot_prompt.wav ...")
+    try:
+        urllib.request.urlretrieve(PROMPT_WAV_URL, str(prompt))
+    except Exception as e:
+        print(f"  ⚠️  参考音频下载失败：{e}")
+        print(f"     请手动从 Linux 复制：/home/elysia/project/CosyVoice/asset/zero_shot_prompt.wav")
+        print(f"     或浏览器打开：{PROMPT_WAV_URL}")
         return False
-    present = [f for f in _REQUIRED_FILES if (download_dir / f).exists()]
-    return len(present) == len(_REQUIRED_FILES)
+    size = prompt.stat().st_size
+    print(f"  ✅ 参考音频就绪：{prompt}（{size} 字节）")
+    return size > 100_000
 
 
 def main() -> None:
@@ -81,57 +80,52 @@ def main() -> None:
     download_dir = Path(args.dir)
 
     print("\n" + "=" * 60)
-    print("  CosyVoice 模型下载器")
+    print("  CosyVoice 模型下载器（HF 镜像）")
     print("=" * 60)
-    print(f"  模型: {MODEL_ID}")
+    print(f"  模型: {HF_REPO_ID}")
     print(f"  目标: {download_dir}")
     print()
-
-    if _is_complete(download_dir) and not args.force:
-        print(f"  ✅ 模型已存在且完整：{download_dir}")
-        print(f"     （用 --force 重新下载）")
-        print()
-        return
 
     download_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        from modelscope import snapshot_download
+        from huggingface_hub import snapshot_download
     except ImportError:
         print(
-            "  ❌ modelscope 未安装。\n"
-            "     安装：pip install modelscope\n"
-            "     （cosyvoice 依赖它，通常已随 cosyvoice 安装）"
+            "  ❌ huggingface_hub 未安装。\n"
+            "     安装：pip install huggingface_hub"
         )
         sys.exit(1)
 
-    print(f"  📦 开始下载 {MODEL_ID}（约 2GB，请耐心等待）...")
-    print(f"     ModelScope 国内直连，一般不需要代理。\n")
+    endpoint = __import__("os").environ.get("HF_ENDPOINT", "")
+    if not endpoint:
+        print("  ⚠️  未设置 HF_ENDPOINT，直连 huggingface.co 可能很慢/失败。")
+        print("     建议先执行：$env:HF_ENDPOINT=\"https://hf-mirror.com\"\n")
+    else:
+        print(f"  🔗 使用 HF 镜像：{endpoint}\n")
 
+    print(f"  📦 开始下载 {HF_REPO_ID}（约 3.5GB，支持断点续传）...\n")
     start = time.monotonic()
     try:
         snapshot_download(
-            MODEL_ID,
+            repo_id=HF_REPO_ID,
             local_dir=str(download_dir),
+            local_dir_use_symlinks=False,  # Windows 兼容
         )
     except Exception as e:
         print(f"\n  ❌ 下载失败：{e}")
-        print(f"     提示：若因网络问题失败，可尝试手动：")
-        print(f"     git clone https://www.modelscope.cn/iic/CosyVoice2-0.5B.git \"{download_dir}\"")
         sys.exit(1)
 
     elapsed = time.monotonic() - start
-    print(f"\n  ✅ 下载完成，耗时 {elapsed:.0f}s（{elapsed / 60:.1f} min）")
+    print(f"\n  ✅ 模型下载完成，耗时 {elapsed:.0f}s（{elapsed / 60:.1f} min）")
 
-    if not _is_complete(download_dir):
-        print(f"  ⚠️  警告：关键文件缺失，下载可能不完整。请用 --force 重试。")
-        sys.exit(1)
-
-    print(f"  ✅ 模型就绪：{download_dir}")
+    # 参考音频（模型仓库不含，需单独下）
     print()
-    print("  接下来在 config/default.yaml 里设置：")
-    print(f"    tts:")
-    print(f"      model_dir: \"{download_dir.as_posix()}\"")
+    _download_prompt_wav(download_dir)
+
+    print()
+    print("  下一步验证完整性：")
+    print("    python scripts/verify_cosyvoice_model.py")
     print()
 
 
