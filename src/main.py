@@ -33,6 +33,41 @@ from src.vad.silero_vad import SpeechEventType
 logger = get_logger(__name__)
 
 
+def _extract_assistant_text(data: dict) -> str:
+    """Extract assistant reply text from an AIRI chat event payload.
+
+    AIRI protocol (verified against moeru-ai/airi plugin-protocol):
+    `output:gen-ai:chat:message` / `output:gen-ai:chat:complete` carry the
+    reply in `data.message` (an AssistantMessage), whose text lives in
+    `message.content` — a string or a list of content parts.
+
+    Args:
+        data: Event `data` dict from AIRI.
+
+    Returns:
+        Extracted reply text, or "" if none found.
+    """
+    msg = data.get("message")
+    if isinstance(msg, dict):
+        content = msg.get("content")
+    else:
+        content = data.get("content")
+
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                parts.append(part.get("text", ""))
+        return "".join(parts)
+
+    return ""
+
+
 def _parse_args() -> argparse.Namespace:
     """Parse command line arguments.
 
@@ -444,7 +479,7 @@ async def _run_full(
                 msg = pending_sends.get_nowait()
                 await airi.send(msg)
                 pending_sends.task_done()
-                logger.debug("Flushed buffered STT: \"{}\"", msg["data"]["text"][:60])
+                logger.debug("Flushed buffered STT: \"{}\"", msg["data"]["transcription"][:60])
             except asyncio.QueueEmpty:
                 break
             except Exception as e:
@@ -490,8 +525,7 @@ async def _run_full(
         Args:
             data: Event data dict from AIRI.
         """
-        text = (data.get("text") or data.get("message")
-                or data.get("content") or "")
+        text = _extract_assistant_text(data)
         if not text:
             return
 
@@ -586,12 +620,11 @@ async def _run_full(
                 )
 
                 # Phase 4: Send to AIRI (or buffer if disconnected)
+                # AIRI protocol: input:text:voice data field is `transcription`.
                 message = {
                     "type": "input:text:voice",
                     "data": {
-                        "text": output_text,
-                        "language": result.language or "zh",
-                        "turn_id": turn.turn_id,
+                        "transcription": output_text,
                     },
                 }
 
@@ -648,9 +681,9 @@ async def _run_full(
         # Start pipeline (capture + VAD)
         await pipeline.start()
 
-        # Wait for AIRI connection
-        for _ in range(10):
-            if airi.is_connected:
+        # Wait for AIRI handshake (connect + announce) to complete
+        for _ in range(20):
+            if airi.is_ready:
                 airi_connected = True
                 print("   ✅ Connected to AIRI")
                 # Flush any buffered messages from previous sessions
@@ -663,12 +696,12 @@ async def _run_full(
 
         # ── Main event loop ────────────────────────────────────
         while pipeline.is_running:
-            # Phase 4: Connection state transitions
-            if airi.is_connected and not airi_connected:
+            # Phase 4: Connection state transitions (ready = handshake done)
+            if airi.is_ready and not airi_connected:
                 airi_connected = True
                 print("\n   🔄 AIRI reconnected")
                 await _flush_pending_sends()
-            elif not airi.is_connected and airi_connected:
+            elif not airi.is_ready and airi_connected:
                 airi_connected = False
                 print("\n   🔌 AIRI disconnected, buffering...")
 

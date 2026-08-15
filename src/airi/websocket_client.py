@@ -4,6 +4,17 @@ AIRI WebSocket client module.
 Connects to AIRI's plugin protocol WebSocket server and communicates
 using the Eventa-based event system.
 
+Protocol reference (verified against moeru-ai/airi
+`packages/plugin-protocol/src/types/events.ts` and
+`packages/server-sdk/src/client.ts`):
+
+- Handshake: (optional) module:authenticate → module:announce → module:announced
+- Every outgoing message carries `metadata.source` (ModuleIdentity) and
+  `metadata.event.id`.
+- `input:text:voice` data field is `transcription` (NOT `text`).
+- `output:gen-ai:chat:message` data field is `message` (AssistantMessage whose
+  text lives in `message.content`), not a flat `text`.
+
 Phase 1: Basic connection, authentication, heartbeat, and event listening.
 Future phases: Send input:text:voice events, receive TTS responses.
 """
@@ -12,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from enum import Enum
 from typing import Any
 
@@ -29,8 +41,15 @@ class AIRIEventType(str, Enum):
     INPUT_VOICE = "input:voice"
     OUTPUT_CHAT_MESSAGE = "output:gen-ai:chat:message"
     OUTPUT_CHAT_COMPLETE = "output:gen-ai:chat:complete"
+    OUTPUT_CHAT_TOOL_CALL = "output:gen-ai:chat:tool-call"
     TRANSPORT_HEARTBEAT = "transport:connection:heartbeat"
     ERROR = "error"
+
+
+# Control message types handled internally (not dispatched to handlers).
+_MODULE_AUTHENTICATED = "module:authenticated"
+_MODULE_ANNOUNCED = "module:announced"
+_REGISTRY_MODULES_SYNC = "registry:modules:sync"
 
 
 class AIRIClient:
@@ -39,6 +58,7 @@ class AIRIClient:
     Attributes:
         host: AIRI server hostname.
         port: AIRI WebSocket port.
+        path: WebSocket path.
         token: Authentication token.
         reconnect_interval: Seconds between reconnect attempts.
         max_attempts: Maximum reconnect attempts (0 = unlimited).
@@ -50,6 +70,7 @@ class AIRIClient:
         port: int = 6121,
         path: str = "/ws",
         token: str = "",
+        name: str = "voice-module",
         reconnect_interval: int = 5,
         max_attempts: int = 0,
     ):
@@ -60,6 +81,7 @@ class AIRIClient:
             port: WebSocket port.
             path: WebSocket path.
             token: Authentication token.
+            name: Plugin/module name (stable identifier across instances).
             reconnect_interval: Seconds between reconnects.
             max_attempts: Max reconnect attempts (0 = unlimited).
         """
@@ -67,12 +89,17 @@ class AIRIClient:
         self.port = port
         self.path = path
         self.token = token
+        self.name = name
         self.reconnect_interval = reconnect_interval
         self.max_attempts = max_attempts
+
+        # Unique instance id (per process/deployment), matches ModuleIdentity.id.
+        self._instance_id = f"{self.name}-{uuid.uuid4().hex[:8]}"
 
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._running = False
         self._connected = False
+        self._ready = False  # True once module:announced received
         self._event_handlers: dict[str, list[callable]] = {}
 
     @property
@@ -84,6 +111,20 @@ class AIRIClient:
     def is_connected(self) -> bool:
         """Check if connected to AIRI."""
         return self._connected
+
+    @property
+    def is_ready(self) -> bool:
+        """Check if the module handshake (announce) has completed."""
+        return self._ready
+
+    @property
+    def _identity(self) -> dict:
+        """ModuleIdentity as expected by the AIRI protocol."""
+        return {
+            "kind": "plugin",
+            "plugin": {"id": self.name},
+            "id": self._instance_id,
+        }
 
     def on(self, event_type: str, handler: callable) -> None:
         """Register an event handler.
@@ -128,12 +169,8 @@ class AIRIClient:
                 close_timeout=5,
             )
             self._connected = True
+            self._ready = False
             logger.info("Connected to AIRI")
-
-            # Send authentication if token is set
-            if self.token:
-                await self._send_authenticate()
-
             return True
 
         except (websockets.WebSocketException, OSError) as e:
@@ -141,20 +178,10 @@ class AIRIClient:
             self._connected = False
             return False
 
-    async def _send_authenticate(self) -> None:
-        """Send authentication message."""
-        auth_msg = {
-            "type": "module:authenticate",
-            "data": {
-                "token": self.token,
-            },
-        }
-        await self.send(auth_msg)
-        logger.debug("Authentication sent")
-
     async def disconnect(self) -> None:
         """Disconnect from AIRI."""
         self._connected = False
+        self._ready = False
         if self._ws:
             try:
                 await self._ws.close()
@@ -166,8 +193,11 @@ class AIRIClient:
     async def send(self, message: dict) -> bool:
         """Send a JSON message to AIRI.
 
+        Automatically attaches `metadata.source` (ModuleIdentity) and
+        `metadata.event.id`, as required by the AIRI protocol.
+
         Args:
-            message: Dictionary to send as JSON.
+            message: Dictionary with at least "type" and "data" keys.
 
         Returns:
             True if sent successfully.
@@ -176,14 +206,121 @@ class AIRIClient:
             logger.warning("Not connected, cannot send message")
             return False
 
+        payload = {
+            "type": message["type"],
+            "data": message.get("data", {}),
+            "metadata": {
+                "source": self._identity,
+                "event": {"id": uuid.uuid4().hex[:16]},
+            },
+        }
+
         try:
-            payload = json.dumps(message, ensure_ascii=False)
-            await self._ws.send(payload)
+            raw = json.dumps(payload, ensure_ascii=False)
+            await self._ws.send(raw)
             return True
         except websockets.WebSocketException as e:
             logger.error("Send error: {}", e)
             self._connected = False
             return False
+
+    # ── Handshake ────────────────────────────────────────────────
+
+    async def _authenticate(self) -> None:
+        """Send module:authenticate (only when a token is configured)."""
+        await self.send({
+            "type": "module:authenticate",
+            "data": {"token": self.token},
+        })
+        logger.debug("Authentication sent")
+
+    async def _announce(self) -> None:
+        """Send module:announce to declare this module to AIRI."""
+        await self.send({
+            "type": "module:announce",
+            "data": {
+                "name": self.name,
+                "identity": self._identity,
+                "possibleEvents": [],
+                "dependencies": [],
+            },
+        })
+        logger.debug("Module announce sent: {} ({})", self.name, self._instance_id)
+
+    async def _start_handshake(self) -> None:
+        """Begin the handshake after the socket is open."""
+        if self.token:
+            await self._authenticate()
+        else:
+            await self._announce()
+
+    async def _handle_control_message(self, event_type: str, data: dict) -> bool:
+        """Handle protocol control messages.
+
+        Returns True if the message was consumed (should not be dispatched
+        to user handlers), False otherwise.
+        """
+        if event_type == _MODULE_AUTHENTICATED:
+            if data.get("authenticated"):
+                logger.info("AIRI authentication succeeded")
+                await self._announce()
+            else:
+                logger.error("AIRI authentication failed")
+            return True
+
+        if event_type == _MODULE_ANNOUNCED:
+            identity = data.get("identity") or {}
+            if data.get("name") == self.name and identity.get("id") == self._instance_id:
+                if not self._ready:
+                    self._ready = True
+                    logger.info("AIRI module announced, ready ({})", self._instance_id)
+            return True
+
+        if event_type == _REGISTRY_MODULES_SYNC:
+            # Fallback: if announce succeeded but module:announced was missed.
+            if self._ready:
+                return True
+            modules = data.get("modules") or []
+            for m in modules:
+                mid = (m.get("identity") or {}) if isinstance(m, dict) else {}
+                if m.get("name") == self.name and mid.get("id") == self._instance_id:
+                    self._ready = True
+                    logger.info("AIRI module ready via registry sync")
+                    break
+            return True
+
+        if event_type == AIRIEventType.ERROR:
+            logger.error("AIRI error event: {}", data.get("message") or data)
+            return True
+
+        if event_type == AIRIEventType.TRANSPORT_HEARTBEAT:
+            # Respond to server pings with a pong.
+            if data.get("kind") == "ping":
+                await self.send({
+                    "type": "transport:connection:heartbeat",
+                    "data": {"kind": "pong", "message": "💛"},
+                })
+            return True
+
+        return False
+
+    @staticmethod
+    def _parse_message(raw: str) -> dict:
+        """Parse an incoming message (JSON, with a superjson fallback)."""
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON message: {raw[:100]}") from e
+
+        # superjson envelope: {"json": <payload>, "meta": {...}}
+        if (
+            isinstance(parsed, dict)
+            and isinstance(parsed.get("json"), dict)
+            and "meta" in parsed
+        ):
+            return parsed["json"]
+
+        return parsed
 
     async def _recv_loop(self) -> None:
         """Receive and dispatch messages from AIRI."""
@@ -192,20 +329,27 @@ class AIRIClient:
         try:
             async for raw in self._ws:
                 try:
-                    message = json.loads(raw)
-                    event_type = message.get("type", "")
-                    data = message.get("data", {})
+                    message = self._parse_message(raw)
+                except ValueError as e:
+                    logger.warning("Dropping malformed message: {}", e)
+                    continue
 
-                    if event_type:
-                        self._dispatch_event(event_type, data)
+                event_type = message.get("type", "")
+                data = message.get("data", {}) or {}
 
-                        # Log message types (debug)
-                        if event_type != AIRIEventType.TRANSPORT_HEARTBEAT:
-                            logger.debug("Received event: {} | data_keys={}",
-                                         event_type, list(data.keys()))
+                if not event_type:
+                    continue
 
-                except json.JSONDecodeError as e:
-                    logger.warning("Invalid JSON from AIRI: {}", e)
+                if await self._handle_control_message(event_type, data):
+                    continue
+
+                self._dispatch_event(event_type, data)
+
+                if event_type != AIRIEventType.TRANSPORT_HEARTBEAT:
+                    logger.debug(
+                        "Received event: {} | data_keys={}",
+                        event_type, list(data.keys()) if isinstance(data, dict) else [],
+                    )
 
         except websockets.WebSocketException as e:
             logger.error("Receive loop error: {}", e)
@@ -213,6 +357,7 @@ class AIRIClient:
             logger.debug("Receive loop cancelled")
         finally:
             self._connected = False
+            self._ready = False
             logger.info("Receive loop ended")
 
     async def _heartbeat_loop(self) -> None:
@@ -260,6 +405,10 @@ class AIRIClient:
             recv_task = asyncio.create_task(self._recv_loop())
             heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
+            # Start handshake after the receive loop is running so the
+            # module:announced response can be received.
+            await self._start_handshake()
+
             # Wait for disconnection
             try:
                 await recv_task
@@ -299,17 +448,11 @@ class AIRIClient:
         }
         return await self.send(message)
 
-    async def send_input_text_voice(
-        self,
-        text: str,
-        audio: bytes | None = None,
-        **overrides,
-    ) -> bool:
+    async def send_input_text_voice(self, text: str, **overrides) -> bool:
         """Send an input:text:voice event to AIRI.
 
         Args:
             text: Transcribed text.
-            audio: Optional audio data bytes.
             **overrides: Optional overrides.
 
         Returns:
@@ -318,11 +461,8 @@ class AIRIClient:
         message = {
             "type": "input:text:voice",
             "data": {
-                "text": text,
+                "transcription": text,
                 **overrides,
             },
         }
-        if audio is not None:
-            message["data"]["audio"] = audio.hex() if isinstance(audio, bytes) else audio
-
         return await self.send(message)
