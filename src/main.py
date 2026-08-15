@@ -422,6 +422,7 @@ async def _run_full(
     airi = AIRIClient(
         host=pipeline.config.airi.host,
         port=pipeline.config.airi.port,
+        path=pipeline.config.airi.path,
         token=pipeline.config.airi.token,
         reconnect_interval=pipeline.config.airi.reconnect_interval,
         max_attempts=pipeline.config.airi.max_reconnect_attempts,
@@ -631,7 +632,7 @@ async def _run_full(
 
     print("\n🎤 AIRI Voice Module - Full Mode (VAD → STT → AIRI → TTS)")
     print("=" * 60)
-    print(f"   AIRI:     ws://{pipeline.config.airi.host}:{pipeline.config.airi.port}")
+    print(f"   AIRI:     {pipeline.config.airi.url}")
     print(f"   TTS:      {'✅ ' + pipeline.config.tts.engine if tts_available else '❌ disabled'}")
     print(f"   Session:  {ctx.session_id}")
     print("=" * 60)

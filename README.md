@@ -9,7 +9,7 @@
    P1        P1       P2          P4            P4       P3       P1
 ```
 
-Voice Module 作为 AIRI 插件运行，通过 `ws://localhost:10443` 与 AIRI 通信，不直接调用 LLM。
+Voice Module 作为 AIRI 插件运行，通过 `ws://localhost:6121/ws` 与 AIRI 通信，不直接调用 LLM。
 
 ## 开发阶段
 

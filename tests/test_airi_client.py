@@ -19,25 +19,27 @@ class TestAIRIClient:
         """Test default initialization."""
         client = AIRIClient()
         assert client.host == "localhost"
-        assert client.port == 10443
+        assert client.port == 6121
         assert not client.is_connected
-        assert client.url == "ws://localhost:10443"
+        assert client.url == "ws://localhost:6121/ws"
 
     def test_custom_params(self):
         """Test custom initialization."""
         client = AIRIClient(
             host="192.168.1.100",
             port=8080,
+            path="/custom",
             token="abc123",
             reconnect_interval=10,
             max_attempts=3,
         )
         assert client.host == "192.168.1.100"
         assert client.port == 8080
+        assert client.path == "/custom"
         assert client.token == "abc123"
         assert client.reconnect_interval == 10
         assert client.max_attempts == 3
-        assert client.url == "ws://192.168.1.100:8080"
+        assert client.url == "ws://192.168.1.100:8080/custom"
 
     def test_event_handler_registration(self):
         """Test event handler registration."""

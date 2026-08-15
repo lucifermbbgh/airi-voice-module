@@ -39,7 +39,8 @@ class VADConfig:
 class AIRIConfig:
     """AIRI WebSocket connection configuration."""
     host: str = "localhost"
-    port: int = 10443
+    port: int = 6121
+    path: str = "/ws"
     token: str = ""
     reconnect_interval: int = 5
     max_reconnect_attempts: int = 0
@@ -47,7 +48,7 @@ class AIRIConfig:
     @property
     def url(self) -> str:
         """Get WebSocket URL."""
-        return f"ws://{self.host}:{self.port}"
+        return f"ws://{self.host}:{self.port}{self.path}"
 
 
 @dataclass
@@ -130,6 +131,7 @@ ENV_MAP: dict[str, str] = {
     "AIRI_HOST": "airi.host",
     "AIRI_PORT": "airi.port",
     "AIRI_TOKEN": "airi.token",
+    "AIRI_PATH": "airi.path",
     "AUDIO_INPUT_DEVICE": "audio.input_device",
     "AUDIO_OUTPUT_DEVICE": "audio.output_device",
     "VAD_THRESHOLD": "vad.threshold",
@@ -244,7 +246,8 @@ def _default_dict() -> dict:
         },
         "airi": {
             "host": "localhost",
-            "port": 10443,
+            "port": 6121,
+            "path": "/ws",
             "token": "",
             "reconnect_interval": 5,
             "max_reconnect_attempts": 0,

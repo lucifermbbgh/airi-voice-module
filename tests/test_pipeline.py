@@ -25,7 +25,7 @@ class TestConfig:
         assert config.audio.target_sample_rate == 16000
         assert config.vad.threshold == 0.5
         assert config.airi.host == "localhost"
-        assert config.airi.port == 10443
+        assert config.airi.port == 6121
         assert config.logging.level == "DEBUG"
 
     def test_config_from_yaml(self):

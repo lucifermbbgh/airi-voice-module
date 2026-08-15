@@ -47,7 +47,8 @@ class AIRIClient:
     def __init__(
         self,
         host: str = "localhost",
-        port: int = 10443,
+        port: int = 6121,
+        path: str = "/ws",
         token: str = "",
         reconnect_interval: int = 5,
         max_attempts: int = 0,
@@ -57,12 +58,14 @@ class AIRIClient:
         Args:
             host: AIRI server hostname.
             port: WebSocket port.
+            path: WebSocket path.
             token: Authentication token.
             reconnect_interval: Seconds between reconnects.
             max_attempts: Max reconnect attempts (0 = unlimited).
         """
         self.host = host
         self.port = port
+        self.path = path
         self.token = token
         self.reconnect_interval = reconnect_interval
         self.max_attempts = max_attempts
@@ -75,7 +78,7 @@ class AIRIClient:
     @property
     def url(self) -> str:
         """Get WebSocket URL."""
-        return f"ws://{self.host}:{self.port}"
+        return f"ws://{self.host}:{self.port}{self.path}"
 
     @property
     def is_connected(self) -> bool:

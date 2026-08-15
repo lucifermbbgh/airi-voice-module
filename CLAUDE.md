@@ -18,7 +18,7 @@
 ## 架构
 
 ```
-Mic → VAD → STT → AIRI WebSocket (ws://localhost:10443) → TTS → Speaker
+Mic → VAD → STT → AIRI WebSocket (ws://localhost:6121/ws) → TTS → Speaker
  P1     P1    P2              P4                            P3     P1
 ```
 
@@ -53,7 +53,7 @@ src/
 
 ## 关键设计决策
 
-- **直连 AIRI WebSocket**：Voice Module 通过 `ws://localhost:10443` 与 AIRI 插件协议通信，不绕任何中间层
+- **直连 AIRI WebSocket**：Voice Module 通过 `ws://localhost:6121/ws` 与 AIRI 插件协议通信，不绕任何中间层
 - **三协程流水线**：capture_loop / vad_loop / playback_loop 并发运行
 - **TTS 引擎**：CosyVoice 2（首选），完全离线，中文极优
 - **STT 引擎**：Faster-Whisper small int8，CTranslate2 后端
