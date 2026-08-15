@@ -211,6 +211,11 @@ class CosyVoiceTTS(TTSBase):
             model_path, self.device,
         )
 
+        # 回写本地路径，供 _resolve_prompt_wav 推导参考音频
+        # （asset/zero_shot_prompt.wav 位于模型目录下）
+        if Path(model_path).is_dir():
+            self.model_dir = model_path
+
         load_start = time.monotonic()
         try:
             self._model = CosyVoice2(model_path)
@@ -336,10 +341,9 @@ class CosyVoiceTTS(TTSBase):
         if env and Path(env).exists():
             return env
 
-        # Derive from model_dir: <cosyvoice_root>/pretrained_models/<model>/
+        # 参考音频位于模型目录下的 asset/（modelscope 下载模型时一并下载）
         if self.model_dir:
-            root = Path(self.model_dir).parent.parent
-            prompt = root / "asset" / "zero_shot_prompt.wav"
+            prompt = Path(self.model_dir) / "asset" / "zero_shot_prompt.wav"
             if prompt.exists():
                 return str(prompt)
 
