@@ -22,6 +22,10 @@ scipy>=1.14.0
 # ONNX Runtime (VAD 模型推理，替代 PyTorch)
 onnxruntime>=1.17.0
 
+# Speech-to-Text (Phase 2 - faster-whisper / CTranslate2 backend)
+# ctranslate2 与 huggingface-hub 为自动依赖，无需显式声明
+faster-whisper>=1.1.0
+
 # WebSocket (AIRI connection)
 websockets>=12.0
 
