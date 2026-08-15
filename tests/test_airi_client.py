@@ -127,12 +127,12 @@ class TestAIRIClient:
     # ── Protocol (verified against moeru-ai/airi) ──────────────
 
     def test_identity_structure(self):
-        """ModuleIdentity matches the AIRI protocol shape."""
+        """ExtensionModuleIdentity matches the AIRI 0.11.3 protocol shape."""
         client = AIRIClient(name="voice-module")
         ident = client._identity
-        assert ident["kind"] == "plugin"
-        assert ident["plugin"]["id"] == "voice-module"
         assert ident["id"].startswith("voice-module-")
+        assert ident["extension"]["id"] == "voice-module"
+        assert "kind" not in ident  # legacy plugin field removed in 0.11.3
 
     def test_send_attaches_metadata(self):
         """Every outgoing message carries metadata.source + metadata.event.id."""
@@ -180,12 +180,12 @@ class TestAIRIClient:
         assert msg["type"] == "x"
 
     def test_announced_sets_ready(self):
-        """module:announced for self marks the client ready."""
+        """extension:module:announced for self marks the client ready."""
         client, ws = _connected_client("test-module")
 
         async def run():
             await client._handle_control_message(
-                "module:announced",
+                "extension:module:announced",
                 {"name": "test-module", "identity": {"id": client._instance_id}},
             )
 
@@ -193,12 +193,12 @@ class TestAIRIClient:
         assert client.is_ready is True
 
     def test_announced_ignores_other_modules(self):
-        """module:announced for another module does not mark self ready."""
+        """extension:module:announced for another module does not mark self ready."""
         client, ws = _connected_client("test-module")
 
         async def run():
             await client._handle_control_message(
-                "module:announced",
+                "extension:module:announced",
                 {"name": "other-module", "identity": {"id": "other-id"}},
             )
 
@@ -217,15 +217,16 @@ class TestAIRIClient:
         asyncio.run(run())
         assert len(ws.sent) == 1
         sent = json.loads(ws.sent[0])
-        assert sent["type"] == "module:announce"
+        assert sent["type"] == "extension:module:announce"
         assert sent["data"]["name"] == "test-module"
 
     def test_announce_includes_identity(self):
-        """module:announce payload includes name + identity."""
+        """extension:module:announce payload includes name + identity."""
         client, ws = _connected_client("test-module")
 
         asyncio.run(client._announce())
         sent = json.loads(ws.sent[0])
-        assert sent["type"] == "module:announce"
+        assert sent["type"] == "extension:module:announce"
         assert sent["data"]["name"] == "test-module"
         assert sent["data"]["identity"]["id"] == client._instance_id
+        assert sent["data"]["identity"]["extension"]["id"] == "test-module"

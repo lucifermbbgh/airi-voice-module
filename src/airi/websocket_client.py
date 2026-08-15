@@ -48,7 +48,7 @@ class AIRIEventType(str, Enum):
 
 # Control message types handled internally (not dispatched to handlers).
 _MODULE_AUTHENTICATED = "module:authenticated"
-_MODULE_ANNOUNCED = "module:announced"
+_MODULE_ANNOUNCED = "extension:module:announced"
 _REGISTRY_MODULES_SYNC = "registry:modules:sync"
 
 
@@ -119,11 +119,20 @@ class AIRIClient:
 
     @property
     def _identity(self) -> dict:
-        """ModuleIdentity as expected by the AIRI protocol."""
+        """ExtensionModuleIdentity (AIRI 0.11.3): {id, extension: {id}}."""
+        return {
+            "id": self._instance_id,
+            "extension": {"id": self.name},
+        }
+
+    @property
+    def _source(self) -> dict:
+        """Metadata source (0.11.3): kind + identity + legacy plugin field."""
         return {
             "kind": "plugin",
-            "plugin": {"id": self.name},
             "id": self._instance_id,
+            "extension": {"id": self.name},
+            "plugin": {"id": self.name},
         }
 
     def on(self, event_type: str, handler: callable) -> None:
@@ -210,7 +219,7 @@ class AIRIClient:
             "type": message["type"],
             "data": message.get("data", {}),
             "metadata": {
-                "source": self._identity,
+                "source": self._source,
                 "event": {"id": uuid.uuid4().hex[:16]},
             },
         }
@@ -235,9 +244,9 @@ class AIRIClient:
         logger.debug("Authentication sent")
 
     async def _announce(self) -> None:
-        """Send module:announce to declare this module to AIRI."""
+        """Send extension:module:announce to declare this module to AIRI."""
         await self.send({
-            "type": "module:announce",
+            "type": "extension:module:announce",
             "data": {
                 "name": self.name,
                 "identity": self._identity,
