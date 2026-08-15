@@ -71,6 +71,36 @@ class TestPipelineInit:
         pipeline.on_speech_event(lambda e: events.append(e))
         assert len(pipeline._speech_callbacks) == 1
 
+    def test_dispatch_async_callback(self):
+        """async 回调应通过 create_task 调度，避免「coroutine never awaited」bug。
+
+        回归背景：Phase 4 的 on_speech 是 async def，原 _dispatch_speech_event
+        用 callback(event) 同步调用，导致协程从未执行，端到端链路在
+        VAD→STT 环节断开。
+        """
+        import asyncio
+
+        from src.vad.silero_vad import SpeechEvent, SpeechEventType
+
+        config = Config()
+        pipeline = AudioPipeline(config)
+
+        results = []
+
+        async def async_cb(event):
+            results.append(event)
+
+        pipeline.on_speech_event(async_cb)
+
+        async def run():
+            event = SpeechEvent(SpeechEventType.SPEECH_START)
+            pipeline._dispatch_speech_event(event)
+            await asyncio.sleep(0.01)  # 让 create_task 调度的协程执行
+
+        asyncio.run(run())
+        assert len(results) == 1
+        assert results[0].type == SpeechEventType.SPEECH_START
+
     def test_audio_device_listing(self):
         """Test device listing (should not raise)."""
         config = Config()

@@ -17,6 +17,7 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -99,12 +100,18 @@ class AudioPipeline:
     def _dispatch_speech_event(self, event: SpeechEvent) -> None:
         """Dispatch speech event to all registered callbacks.
 
+        支持同步和异步回调：若回调是 async def（返回 coroutine），
+        用 asyncio.create_task 调度到当前事件循环执行，避免
+        「coroutine was never awaited」问题。
+
         Args:
             event: Speech event to dispatch.
         """
         for callback in self._speech_callbacks:
             try:
-                callback(event)
+                result = callback(event)
+                if inspect.iscoroutine(result):
+                    asyncio.create_task(result)
             except Exception as e:
                 logger.error("Speech callback error: {}", e)
 
