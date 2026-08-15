@@ -479,7 +479,7 @@ async def _run_full(
                 msg = pending_sends.get_nowait()
                 await airi.send(msg)
                 pending_sends.task_done()
-                logger.debug("Flushed buffered STT: \"{}\"", msg["data"]["transcription"][:60])
+                logger.debug("Flushed buffered STT: \"{}\"", msg["data"]["text"][:60])
             except asyncio.QueueEmpty:
                 break
             except Exception as e:
@@ -620,11 +620,13 @@ async def _run_full(
                 )
 
                 # Phase 4: Send to AIRI (or buffer if disconnected)
-                # AIRI protocol: input:text:voice data field is `transcription`.
+                # AIRI 0.11.3: the chat-ingestion consumer (stage context-bridge)
+                # only handles `input:text` (data `text`). `input:text:voice` is
+                # registered as a consumer but has no handler, so it is dropped.
                 message = {
-                    "type": "input:text:voice",
+                    "type": "input:text",
                     "data": {
-                        "transcription": output_text,
+                        "text": output_text,
                     },
                 }
 

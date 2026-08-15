@@ -4,8 +4,9 @@ Tests for the AIRI WebSocket client.
 These tests validate the client's message construction, protocol handshake,
 and connection state management without requiring an actual AIRI server.
 
-Protocol expectations are verified against moeru-ai/airi's plugin-protocol:
-- input:text:voice data field is `transcription` (not `text`)
+Protocol expectations are verified against moeru-ai/airi's plugin-protocol (0.11.3):
+- `input:text` (data `text`) is the ONLY chat input event the stage consumes;
+  `input:text:voice` (data `transcription`) is registered but has no handler.
 - every outgoing message carries metadata.source (ModuleIdentity) + metadata.event.id
 - module:announced (for self) marks the client ready
 """
@@ -148,6 +149,16 @@ class TestAIRIClient:
         assert payload["metadata"]["source"]["id"] == client._instance_id
         assert isinstance(payload["metadata"]["event"]["id"], str)
         assert payload["metadata"]["event"]["id"]
+
+    def test_send_input_text_uses_text_field(self):
+        """send_input_text emits `input:text` with `text` — the ONLY chat input
+        event AIRI 0.11.3 consumes (regression for the dropped-voice-input bug)."""
+        client, ws = _connected_client("test")
+        assert asyncio.run(client.send_input_text("你好")) is True
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "input:text"
+        assert payload["data"]["text"] == "你好"
+        assert "transcription" not in payload["data"]
 
     def test_send_input_text_voice_uses_transcription(self):
         """send_input_text_voice emits the `transcription` field, not `text`."""

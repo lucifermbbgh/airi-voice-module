@@ -11,12 +11,16 @@ Protocol reference (verified against moeru-ai/airi
 - Handshake: (optional) module:authenticate → module:announce → module:announced
 - Every outgoing message carries `metadata.source` (ModuleIdentity) and
   `metadata.event.id`.
-- `input:text:voice` data field is `transcription` (NOT `text`).
+- `input:text` data field is `text` — the ONLY input event AIRI 0.11.3 actually
+  consumes (stage context-bridge.ts has a handler for it).
+- `input:text:voice` (data `transcription`) and `input:voice` (data `audio`)
+  are registered as chat-ingestion consumers but have NO handler in 0.11.3,
+  so they are silently dropped. Use `send_input_text()` for chat input.
 - `output:gen-ai:chat:message` data field is `message` (AssistantMessage whose
   text lives in `message.content`), not a flat `text`.
 
 Phase 1: Basic connection, authentication, heartbeat, and event listening.
-Future phases: Send input:text:voice events, receive TTS responses.
+Future phases: Send input:text events, receive TTS responses.
 """
 
 from __future__ import annotations
@@ -465,6 +469,11 @@ class AIRIClient:
 
     async def send_input_text_voice(self, text: str, **overrides) -> bool:
         """Send an input:text:voice event to AIRI.
+
+        NOTE: AIRI 0.11.3 registers input:text:voice as a chat-ingestion
+        consumer but has no handler for it (context-bridge.ts only handles
+        input:text), so this event is silently dropped. Prefer send_input_text()
+        for chat input; this method is retained for protocol completeness.
 
         Args:
             text: Transcribed text.

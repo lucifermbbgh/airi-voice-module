@@ -1,8 +1,10 @@
 """
 诊断 AIRI 输入事件：对比 input:text（打字）与 input:text:voice（语音）两条路径。
 
-完成握手后依次发送两种输入事件，观察哪个能触发 output:gen-ai:chat:message，
-从而定位「语音输入不触发回复」是 transcription 字段问题还是路由问题。
+结论（已验证，AIRI 0.11.3）：只有 input:text 会触发 output:gen-ai:chat:message。
+input:text:voice 被 stage 注册为 chat-ingestion consumer 但没有 handler
+（stage-ui context-bridge.ts 只处理 input:text），因此被静默丢弃。
+Voice Module 现改用 input:text（data.text）发送转写文字。
 
 用法（Windows PowerShell，项目 .venv 内）：
     python tests/probe_airi_input.py [token]
