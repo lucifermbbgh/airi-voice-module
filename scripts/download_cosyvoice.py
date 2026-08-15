@@ -34,8 +34,20 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 MODEL_ID = "iic/CosyVoice2-0.5B"
 DEFAULT_DIR = _PROJECT_ROOT / "pretrained_models" / "CosyVoice2-0.5B"
-# 模型完整性判断的关键文件（缺任一个都视为下载不完整）
-_REQUIRED_FILES = ["llm", "flow", "CosyVoice-BlankEN", "campplus.onnx"]
+# 模型完整性判断的关键文件（缺任一个都视为下载不完整）。
+# CosyVoice2 加载需要（见 cosyvoice/cli/cosyvoice.py CosyVoice2.__init__）：
+#   cosyvoice2.yaml + llm.pt/flow.pt/hift.pt + campplus.onnx
+#   + speech_tokenizer_v2.onnx + spk2info.pt + CosyVoice-BlankEN/ 目录
+_REQUIRED_FILES = [
+    "cosyvoice2.yaml",
+    "llm.pt",
+    "flow.pt",
+    "hift.pt",
+    "campplus.onnx",
+    "speech_tokenizer_v2.onnx",
+    "spk2info.pt",
+    "CosyVoice-BlankEN",
+]
 
 
 def _parse_args() -> argparse.Namespace:
