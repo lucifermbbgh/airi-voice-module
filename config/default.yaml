@@ -57,7 +57,7 @@ tts:
   # Engine configuration
   engine: "cosyvoice"                  # cosyvoice / edge_tts
   model_size: "base"                   # base / small
-  model_dir: null                      # null = ModelScope cache; or "models/CosyVoice-2/"
+  model_dir: null                      # null = 自动（优先本地 pretrained_models/，否则 ModelScope iic/ 下载）; 或指向已下载目录
 
   # Voice configuration
   voice_id: "default"                  # Voice/speaker ID

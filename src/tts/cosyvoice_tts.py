@@ -42,12 +42,14 @@ logger = get_logger(__name__)
 MODELS: dict[str, dict] = {
     "base": {
         "name": "CosyVoice2-0.5B",
+        "model_id": "iic/CosyVoice2-0.5B",
         "ram_mb": 1500,
         "rtf": 0.2,
         "description": "Default model, good balance of quality and speed",
     },
     "small": {
         "name": "CosyVoice2-0.5B",
+        "model_id": "iic/CosyVoice2-0.5B",
         "ram_mb": 1000,
         "rtf": 0.15,
         "description": "Lightweight model, faster but slightly lower quality",
@@ -196,7 +198,13 @@ class CosyVoiceTTS(TTSBase):
             if env_dir:
                 model_path = env_dir
             else:
-                model_path = f"pretrained_models/{model_name}"
+                # Prefer a local offline copy; fall back to the ModelScope id
+                # (CosyVoice downloads it into its own cache when missing).
+                local_dir = Path("pretrained_models") / model_name
+                if local_dir.is_dir():
+                    model_path = str(local_dir)
+                else:
+                    model_path = MODELS[self.model_size]["model_id"]
 
         logger.info(
             "Loading CosyVoice model: {} (device={})",
