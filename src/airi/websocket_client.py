@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from enum import Enum
 from typing import Any
@@ -352,9 +353,11 @@ class AIRIClient:
                 self._dispatch_event(event_type, data)
 
                 if event_type != AIRIEventType.TRANSPORT_HEARTBEAT:
+                    name = data.get("name") if isinstance(data, dict) else None
                     logger.debug(
-                        "Received event: {} | data_keys={}",
-                        event_type, list(data.keys()) if isinstance(data, dict) else [],
+                        "Received event: {} | name={} | data_keys={}",
+                        event_type, name,
+                        list(data.keys()) if isinstance(data, dict) else [],
                     )
 
         except websockets.WebSocketException as e:
@@ -367,16 +370,22 @@ class AIRIClient:
             logger.info("Receive loop ended")
 
     async def _heartbeat_loop(self) -> None:
-        """Send periodic heartbeats to AIRI."""
+        """Send periodic heartbeats to AIRI.
+
+        AIRI server TTL defaults to 60s and health-check every 12s; the official
+        SDK pings every readTimeout/2 = 15s. Ping every 15s to stay well under
+        the unhealthy threshold.
+        """
         try:
             while self._running and self._connected:
-                await asyncio.sleep(30)
+                await asyncio.sleep(15)
                 if self._connected:
                     await self.send({
                         "type": "transport:connection:heartbeat",
                         "data": {
                             "kind": "ping",
                             "message": "🩵",
+                            "at": int(time.time() * 1000),
                         },
                     })
         except asyncio.CancelledError:
