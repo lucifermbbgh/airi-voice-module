@@ -101,7 +101,6 @@ def main() -> None:
         snapshot_download(
             MODEL_ID,
             local_dir=str(download_dir),
-            local_dir_use_symlinks=False,  # Windows 兼容
         )
     except Exception as e:
         print(f"\n  ❌ 下载失败：{e}")
