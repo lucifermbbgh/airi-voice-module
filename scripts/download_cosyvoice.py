@@ -1,24 +1,33 @@
 #!/usr/bin/env python3
 """
-CosyVoice 模型下载脚本（HF 镜像优先，断点续传可靠）。
+CosyVoice 模型下载脚本（HF 镜像，断点续传可靠）。
 
 背景：modelscope 的 snapshot_download 下载大文件（llm.pt ~2GB）时连接
 中断后重试不可靠，导致文件截断（"File is not a zip file"）。改用
 huggingface_hub（配 hf-mirror 镜像）下载，它支持断点续传 + 下载后校验。
 
+镜像地址硬编码在脚本里，无需手动设 HF_ENDPOINT（避免 PowerShell
+复制粘贴时带入 @url:` 等格式污染）。
+
 同时补下载参考音频 zero_shot_prompt.wav（位于 CosyVoice 源码仓库 asset/，
-ModelScope 模型仓库不含它）。
+模型仓库不含它）。
 
 用法（Windows PowerShell，项目 .venv 内）：
-    # 先设 HF 镜像（国内加速 + 断点续传）
-    $env:HF_ENDPOINT="https://hf-mirror.com"
     python scripts/download_cosyvoice.py
 
-    # 指定目录
-    python scripts/download_cosyvoice.py --dir D:/models/CosyVoice2-0.5B
+    # 指定目录 / 强制重下
+    python scripts/download_cosyvoice.py --dir D:/models/CosyVoice2-0.5B --force
 """
 
 from __future__ import annotations
+
+import os
+
+# 关键：必须在 import huggingface_hub 之前设置，因为它在 import 时读取
+# 端点常量。同时设新旧两个变量，兼容 huggingface_hub 0.x 与 1.x。
+_HF_MIRROR = "https://hf-mirror.com"
+os.environ["HF_ENDPOINT"] = _HF_MIRROR          # 旧版变量名
+os.environ["HF_HUB_ENDPOINT"] = _HF_MIRROR      # 1.x 版变量名
 
 import argparse
 import sys
@@ -36,6 +45,9 @@ PROMPT_WAV_URL = (
 )
 DEFAULT_DIR = _PROJECT_ROOT / "pretrained_models" / "CosyVoice2-0.5B"
 
+# 损坏/需重下的核心权重（--force 时删除，保证重新下载而非复用截断文件）
+_CORE_PT_FILES = ("llm.pt", "flow.pt", "hift.pt", "spk2info.pt", "flow.cache.pt")
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -50,9 +62,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force re-download even if files exist",
+        help="Delete existing .pt weight files before re-downloading",
     )
     return parser.parse_args()
+
+
+def _purge_core_files(download_dir: Path) -> None:
+    """删除核心权重文件，确保 --force 时重新下载而非复用截断文件。"""
+    for name in _CORE_PT_FILES:
+        p = download_dir / name
+        if p.exists():
+            p.unlink()
+            print(f"  🗑️  已删除旧文件：{name}")
 
 
 def _download_prompt_wav(download_dir: Path) -> bool:
@@ -62,13 +83,15 @@ def _download_prompt_wav(download_dir: Path) -> bool:
         print(f"  ✅ 参考音频已存在：{prompt}")
         return True
     prompt.parent.mkdir(parents=True, exist_ok=True)
-    print(f"  📥 下载参考音频 zero_shot_prompt.wav ...")
+    print("  📥 下载参考音频 zero_shot_prompt.wav ...")
     try:
         urllib.request.urlretrieve(PROMPT_WAV_URL, str(prompt))
     except Exception as e:
         print(f"  ⚠️  参考音频下载失败：{e}")
-        print(f"     请手动从 Linux 复制：/home/elysia/project/CosyVoice/asset/zero_shot_prompt.wav")
-        print(f"     或浏览器打开：{PROMPT_WAV_URL}")
+        print(
+            "     请手动从 Linux 复制：/home/elysia/project/CosyVoice/asset/zero_shot_prompt.wav\n"
+            f"     或浏览器打开：{PROMPT_WAV_URL}"
+        )
         return False
     size = prompt.stat().st_size
     print(f"  ✅ 参考音频就绪：{prompt}（{size} 字节）")
@@ -84,9 +107,14 @@ def main() -> None:
     print("=" * 60)
     print(f"  模型: {HF_REPO_ID}")
     print(f"  目标: {download_dir}")
+    print(f"  镜像: {_HF_MIRROR}")
     print()
 
     download_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.force:
+        _purge_core_files(download_dir)
+        print()
 
     try:
         from huggingface_hub import snapshot_download
@@ -97,23 +125,20 @@ def main() -> None:
         )
         sys.exit(1)
 
-    endpoint = __import__("os").environ.get("HF_ENDPOINT", "")
-    if not endpoint:
-        print("  ⚠️  未设置 HF_ENDPOINT，直连 huggingface.co 可能很慢/失败。")
-        print("     建议先执行：$env:HF_ENDPOINT=\"https://hf-mirror.com\"\n")
-    else:
-        print(f"  🔗 使用 HF 镜像：{endpoint}\n")
-
     print(f"  📦 开始下载 {HF_REPO_ID}（约 3.5GB，支持断点续传）...\n")
     start = time.monotonic()
     try:
+        # 注意：huggingface_hub 1.x 已废弃 local_dir_use_symlinks，
+        # 只传 local_dir 即可（自动按本地目录模式下载，不用 symlink）。
         snapshot_download(
             repo_id=HF_REPO_ID,
             local_dir=str(download_dir),
-            local_dir_use_symlinks=False,  # Windows 兼容
         )
     except Exception as e:
         print(f"\n  ❌ 下载失败：{e}")
+        print("\n  若仍连不上镜像，可尝试用 git 克隆（LFS 续传）：")
+        print("    git clone https://www.modelscope.cn/iic/CosyVoice2-0.5B.git "
+              "pretrained_models\\CosyVoice2-0.5B")
         sys.exit(1)
 
     elapsed = time.monotonic() - start
