@@ -28,7 +28,9 @@ _PROJECT_ROOT = _HERE.parent
 DEFAULT_DIR = _PROJECT_ROOT / "pretrained_models" / "CosyVoice2-0.5B"
 
 # 关键文件：CosyVoice2 加载必需
-_PT_FILES = ["llm.pt", "flow.pt", "hift.pt", "spk2info.pt"]
+# 注意：spk2info.pt 不在其中——它非必需，frontend.py 里文件缺失时置空
+# 字典 self.spk2info = {}，运行期首次 zero-shot 后 CosyVoice 会自动生成。
+_PT_FILES = ["llm.pt", "flow.pt", "hift.pt"]
 _OTHER_FILES = ["cosyvoice2.yaml", "campplus.onnx", "speech_tokenizer_v2.onnx"]
 _DIRS = ["CosyVoice-BlankEN"]
 
